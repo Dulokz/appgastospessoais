@@ -1,0 +1,298 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AccountType {
+  CHECKING
+  SAVINGS
+  CASH
+  BROKERAGE
+  INVESTMENT
+  OTHER
+}
+
+enum Direction {
+  CREDIT
+  DEBIT
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  TRANSFER
+  INVESTMENT_CONTRIBUTION
+  INVESTMENT_WITHDRAWAL
+  ASSET_PURCHASE
+  ASSET_SALE
+  LIABILITY_PAYMENT
+  LOAN_RECEIVED
+  REFUND
+  INTEREST_INCOME
+  INTEREST_EXPENSE
+  FEE
+  OTHER
+}
+
+enum AllocationType {
+  EXPENSE
+  INCOME
+  ASSET_INCREASE
+  ASSET_DECREASE
+  LIABILITY_INCREASE
+  LIABILITY_REDUCTION
+  TRANSFER
+  INVESTMENT
+  INTEREST
+  FEE
+}
+
+enum FinancialDataSource {
+  MANUAL
+  OFX
+  CSV
+  XLSX
+  OPEN_FINANCE
+  BANK_API
+  BROKER_API
+  OTHER
+}
+
+enum AssetCategory {
+  REAL_ESTATE      // Imóveis (Apartamento, Casa, Terreno, Rural)
+  VEHICLE          // Veículos
+  EQUIPMENT        // Máquinas, Celular, Computador
+  CORPORATE_SHARE  // Participação Societária
+  FINANCIAL_TICKER // Ações, FIIs, ETFs, Cripto
+  FIXED_INCOME     // CDB, Tesouro, LCI/LCA
+  FUNDS            // Fundos de Investimento
+  OTHER
+}
+
+enum LiabilityType {
+  MORTGAGE         // Financiamento Imobiliário
+  VEHICLE_LOAN     // Financiamento Veicular
+  PERSONAL_LOAN    // Empréstimo Pessoal
+  INSTALLMENT      // Parcelamento
+  CREDIT_CARD      // Cartão de Crédito
+  OTHER
+}
+
+model User {
+  id        String    @id @default(uuid())
+  name      String
+  email     String    @unique
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  accounts                Account[]
+  assets                  Asset[]
+  liabilities             Liability[]
+  categories              Category[]
+  transactions            Transaction[]
+  netWorthSnapshots       NetWorthSnapshot[]
+  accountBalanceSnapshots AccountBalanceSnapshot[]
+  financialInstitutions   FinancialInstitution[]
+}
+
+model FinancialInstitution {
+  id        String    @id @default(uuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String    // Banco do Brasil, Sicoob, Sicredi, Bradesco, Corretoras
+  type      String?
+  logoUrl   String?
+  active    Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+
+  accounts  Account[]
+}
+
+model Account {
+  id                     String               @id @default(uuid())
+  userId                 String
+  user                   User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  financialInstitutionId String?
+  financialInstitution   FinancialInstitution? @relation(fields: [financialInstitutionId], references: [id])
+  name                   String
+  type                   AccountType
+  
+  // Controle de Saldos e Conciliação
+  initialBalance         Decimal              @default(0) @db.Decimal(18, 4)
+  calculatedBalance      Decimal              @default(0) @db.Decimal(18, 4) // Derivado das transações
+  confirmedBalance       Decimal?             @db.Decimal(18, 4)             // Saldo informado pela instituição
+  reconciliationDiff     Decimal              @default(0) @db.Decimal(18, 4) // confirmedBalance - calculatedBalance
+  lastSyncAt             DateTime?
+  
+  currency               String               @default("BRL")
+  active                 Boolean              @default(true)
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  deletedAt              DateTime?
+
+  outgoingTransactions   Transaction[]        @relation("AccountTransactions")
+  destinationTransfers   Transaction[]        @relation("TransferDestinationAccount")
+  balanceSnapshots       AccountBalanceSnapshot[]
+}
+
+model Asset {
+  id                   String            @id @default(uuid())
+  userId               String
+  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                 String            // ex: Apartamento Jardins, Toyota Corolla, Tesouro Selic 2029
+  category             AssetCategory
+  description          String?
+  acquisitionDate      DateTime?
+  acquisitionValue     Decimal           @db.Decimal(18, 4)
+  currentValue         Decimal           @db.Decimal(18, 4)
+  lastValuationDate    DateTime          @default(now())
+  notes                String?
+  active               Boolean           @default(true)
+  considerInNetWorth   Boolean           @default(true)
+  createdAt            DateTime          @default(now())
+  updatedAt            DateTime          @updatedAt
+  deletedAt            DateTime?
+
+  valuations           AssetValuation[]
+  liabilities          Liability[]       // Dívidas associadas (ex: financiamento imobiliário)
+  allocations          TransactionAllocation[]
+}
+
+model AssetValuation {
+  id          String   @id @default(uuid())
+  assetId     String
+  asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  date        DateTime @default(now())
+  value       Decimal  @db.Decimal(18, 4)
+  source      String   @default("MANUAL")
+  notes       String?
+  createdAt   DateTime @default(now())
+}
+
+model Liability {
+  id                    String        @id @default(uuid())
+  userId                String
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                  String        // Financiamento CEF Apt 302
+  institution           String?       // Caixa Econômica Federal
+  type                  LiabilityType
+  originalValue         Decimal       @db.Decimal(18, 4)
+  currentBalance        Decimal       @db.Decimal(18, 4) // Saldo devedor atual
+  startDate             DateTime?
+  interestRate          Decimal?      @db.Decimal(8, 4)  // Taxa de juros ao ano/mês
+  totalInstallments     Int?
+  remainingInstallments Int?
+  installmentValue      Decimal?      @db.Decimal(18, 4)
+  associatedAssetId     String?
+  associatedAsset       Asset?        @relation(fields: [associatedAssetId], references: [id])
+  active                Boolean       @default(true)
+  notes                 String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  deletedAt             DateTime?
+
+  allocations           TransactionAllocation[]
+}
+
+model Category {
+  id            String     @id @default(uuid())
+  userId        String
+  user          User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  icon          String?
+  color         String?
+  parentId      String?
+  parent        Category?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  subcategories Category[] @relation("CategoryHierarchy")
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+  deletedAt     DateTime?
+
+  transactions Transaction[]
+  allocations  TransactionAllocation[]
+}
+
+model Transaction {
+  id                   String               @id @default(uuid())
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId            String
+  account              Account              @relation("AccountTransactions", fields: [accountId], references: [id])
+  destinationAccountId String?              // Preenchido em caso de transferência
+  destinationAccount   Account?             @relation("TransferDestinationAccount", fields: [destinationAccountId], references: [id])
+  date                 DateTime             @default(now())
+  description          String
+  amount               Decimal              @db.Decimal(18, 4)
+  direction            Direction
+  transactionType      TransactionType
+  categoryId           String?
+  category             Category?            @relation(fields: [categoryId], references: [id])
+  notes                String?
+  
+  // Idempotência e Integrações Futuras
+  source               FinancialDataSource  @default(MANUAL)
+  externalId           String?
+  importHash           String?              // Hash para deduplicação em cargas OFX/CSV/APIs
+  syncTimestamp        DateTime?
+
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  deletedAt            DateTime?
+
+  allocations          TransactionAllocation[]
+
+  @@unique([userId, accountId, externalId])
+  @@unique([userId, accountId, importHash])
+}
+
+model TransactionAllocation {
+  id             String         @id @default(uuid())
+  transactionId  String
+  transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
+  allocationType AllocationType
+  amount         Decimal        @db.Decimal(18, 4)
+  categoryId     String?
+  category       Category?      @relation(fields: [categoryId], references: [id])
+  assetId        String?
+  asset          Asset?         @relation(fields: [assetId], references: [id])
+  liabilityId    String?
+  liability      Liability?     @relation(fields: [liabilityId], references: [id])
+  notes          String?
+  createdAt      DateTime       @default(now())
+}
+
+model AccountBalanceSnapshot {
+  id                String   @id @default(uuid())
+  userId            String
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId         String
+  account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  date              DateTime @default(now())
+  calculatedBalance Decimal  @db.Decimal(18, 4)
+  confirmedBalance  Decimal? @db.Decimal(18, 4)
+  createdAt         DateTime @default(now())
+
+  @@unique([accountId, date])
+}
+
+model NetWorthSnapshot {
+  id               String   @id @default(uuid())
+  userId           String
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  date             DateTime @default(now())
+  liquidAssets     Decimal  @db.Decimal(18, 4) // Contas correntes + caixa
+  investmentAssets Decimal  @db.Decimal(18, 4) // Ativos de investimento
+  physicalAssets   Decimal  @db.Decimal(18, 4) // Imóveis, veículos, etc.
+  totalAssets      Decimal  @db.Decimal(18, 4) // Soma dos ativos
+  totalLiabilities Decimal  @db.Decimal(18, 4) // Soma dos passivos
+  netWorth         Decimal  @db.Decimal(18, 4) // totalAssets - totalLiabilities
+  liquidNetWorth   Decimal? @db.Decimal(18, 4) // Ativos líquidos + investimentos - dívidas CP
+  createdAt        DateTime @default(now())
+}
