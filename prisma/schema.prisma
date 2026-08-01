@@ -82,6 +82,18 @@ enum LiabilityType {
   OTHER
 }
 
+enum InstrumentType {
+  STOCK
+  FII
+  BDR
+  ETF
+  TREASURY_BOND
+  INVESTMENT_FUND
+  FIXED_INCOME
+  CRYPTO
+  OTHER
+}
+
 model User {
   id        String    @id @default(uuid())
   name      String
@@ -92,6 +104,7 @@ model User {
 
   accounts                Account[]
   assets                  Asset[]
+  investmentPositions     InvestmentPosition[]
   liabilities             Liability[]
   categories              Category[]
   transactions            Transaction[]
@@ -140,13 +153,53 @@ model Account {
   outgoingTransactions   Transaction[]        @relation("AccountTransactions")
   destinationTransfers   Transaction[]        @relation("TransferDestinationAccount")
   balanceSnapshots       AccountBalanceSnapshot[]
+  investmentPositions    InvestmentPosition[]
+}
+
+model Instrument {
+  id             String         @id @default(uuid())
+  symbol         String?        // ex: PETR4, HGLG11, TESOURO_SELIC_2029
+  name           String         // ex: Petrobras PN, Tesouro Selic 2029
+  instrumentType InstrumentType
+  isin           String?
+  currency       String         @default("BRL")
+  exchange       String?        // B3, NYSE, NASDAQ, MANUAL
+  externalId     String?
+  source         String         @default("MANUAL")
+  active         Boolean        @default(true)
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
+
+  positions      InvestmentPosition[]
+}
+
+model InvestmentPosition {
+  id               String      @id @default(uuid())
+  userId           String
+  user             User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId        String      // Conta de custódia (Corretora ou Banco)
+  account          Account     @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  instrumentId     String
+  instrument       Instrument  @relation(fields: [instrumentId], references: [id])
+  
+  quantity         Decimal     @db.Decimal(18, 6)
+  averageCost      Decimal     @db.Decimal(18, 4)
+  currentPrice     Decimal?    @db.Decimal(18, 4)
+  currentValue     Decimal     @db.Decimal(18, 4)
+  acquisitionValue Decimal     @db.Decimal(18, 4)
+  lastPriceAt      DateTime?
+  
+  active           Boolean     @default(true)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+  deletedAt        DateTime?
 }
 
 model Asset {
   id                   String            @id @default(uuid())
   userId               String
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name                 String            // ex: Apartamento Jardins, Toyota Corolla, Tesouro Selic 2029
+  name                 String            // ex: Apartamento Jardins, Toyota Corolla
   category             AssetCategory
   description          String?
   acquisitionDate      DateTime?

@@ -3,7 +3,7 @@ import { PrismaClient } from "@prisma/client";
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log("Iniciando seed do banco de dados...");
+  console.log("Iniciando seed completo do banco de dados...");
 
   // 1. Criar Usuário Principal
   const user = await prisma.user.upsert({
@@ -15,253 +15,152 @@ async function main() {
     },
   });
 
-  console.log(`Usuário criado: ${user.name} (${user.id})`);
+  console.log(`Usuário: ${user.name} (${user.id})`);
 
-  // 2. Instituições Financeiras
-  const bb = await prisma.financialInstitution.create({
-    data: {
-      userId: user.id,
-      name: "Banco do Brasil",
-      type: "BANK",
-    },
-  });
-
-  const sicoob = await prisma.financialInstitution.create({
-    data: {
-      userId: user.id,
-      name: "Sicoob",
-      type: "COOPERATIVE",
-    },
-  });
-
-  const sicredi = await prisma.financialInstitution.create({
-    data: {
-      userId: user.id,
-      name: "Sicredi",
-      type: "COOPERATIVE",
-    },
-  });
-
-  const bradesco = await prisma.financialInstitution.create({
-    data: {
-      userId: user.id,
-      name: "Bradesco",
-      type: "BANK",
-    },
-  });
-
-  const xp = await prisma.financialInstitution.create({
-    data: {
-      userId: user.id,
-      name: "XP Investimentos",
-      type: "BROKER",
-    },
-  });
-
-  // 3. Contas Financeiras
-  const accBB = await prisma.account.create({
-    data: {
-      userId: user.id,
-      financialInstitutionId: bb.id,
-      name: "Conta Corrente BB",
-      type: "CHECKING",
-      initialBalance: 15400.0,
-      calculatedBalance: 15400.0,
-      confirmedBalance: 15400.0,
-    },
-  });
-
-  const accSicredi = await prisma.account.create({
-    data: {
-      userId: user.id,
-      financialInstitutionId: sicredi.id,
-      name: "Conta Salário Sicredi",
-      type: "CHECKING",
-      initialBalance: 8250.5,
-      calculatedBalance: 8250.5,
-      confirmedBalance: 8250.5,
-    },
-  });
-
-  const accSicoob = await prisma.account.create({
-    data: {
-      userId: user.id,
-      financialInstitutionId: sicoob.id,
-      name: "Reserva de Emergência Sicoob",
-      type: "SAVINGS",
-      initialBalance: 25000.0,
-      calculatedBalance: 25000.0,
-      confirmedBalance: 25000.0,
-    },
-  });
-
-  const accXP = await prisma.account.create({
-    data: {
-      userId: user.id,
-      financialInstitutionId: xp.id,
-      name: "Conta Investimento XP",
-      type: "BROKERAGE",
-      initialBalance: 1200.0,
-      calculatedBalance: 1200.0,
-      confirmedBalance: 1200.0,
-    },
-  });
-
-  // 4. Categorias Hierárquicas
-  const catMoradia = await prisma.category.create({
-    data: {
-      userId: user.id,
+  // 2. Biblioteca Completa de Categorias Hierárquicas
+  const categoriesData = [
+    {
       name: "Moradia",
       icon: "Home",
-      subcategories: {
-        create: [
-          { userId: user.id, name: "Aluguel" },
-          { userId: user.id, name: "Condomínio" },
-          { userId: user.id, name: "Energia" },
-          { userId: user.id, name: "Água" },
-          { userId: user.id, name: "Internet" },
-        ],
-      },
+      subs: ["Aluguel", "Condomínio", "Energia elétrica", "Água", "Internet", "Manutenção", "Móveis"],
     },
-  });
-
-  const catAlimentacao = await prisma.category.create({
-    data: {
-      userId: user.id,
+    {
       name: "Alimentação",
       icon: "Utensils",
-      subcategories: {
-        create: [
-          { userId: user.id, name: "Mercado" },
-          { userId: user.id, name: "Restaurante" },
-          { userId: user.id, name: "Delivery" },
-        ],
-      },
+      subs: ["Supermercado", "Restaurante", "Delivery", "Padaria", "Outros"],
     },
-  });
-
-  const catTransporte = await prisma.category.create({
-    data: {
-      userId: user.id,
+    {
       name: "Transporte",
       icon: "Car",
-      subcategories: {
-        create: [
-          { userId: user.id, name: "Combustível" },
-          { userId: user.id, name: "Manutenção" },
-          { userId: user.id, name: "Seguro" },
-        ],
-      },
+      subs: ["Combustível", "Manutenção", "Seguro", "IPVA", "Estacionamento", "Pedágio", "Transporte por aplicativo"],
     },
-  });
-
-  const catReceitas = await prisma.category.create({
-    data: {
-      userId: user.id,
+    {
+      name: "Saúde",
+      icon: "HeartPulse",
+      subs: ["Médico", "Dentista", "Farmácia", "Exames", "Plano de saúde"],
+    },
+    {
+      name: "Educação",
+      icon: "GraduationCap",
+      subs: ["Cursos", "Faculdade", "Livros"],
+    },
+    {
+      name: "Lazer",
+      icon: "Smile",
+      subs: ["Restaurantes/lazer", "Jogos", "Cinema", "Eventos", "Hobbies"],
+    },
+    {
+      name: "Viagens",
+      icon: "Plane",
+      subs: ["Hospedagem", "Passagens", "Alimentação em viagem", "Passeios"],
+    },
+    {
+      name: "Compras",
+      icon: "ShoppingBag",
+      subs: ["Eletrônicos", "Vestuário", "Casa", "Presentes", "Outros"],
+    },
+    {
+      name: "Assinaturas",
+      icon: "Tv",
+      subs: ["Streaming", "Software", "Serviços digitais"],
+    },
+    {
+      name: "Impostos e taxas",
+      icon: "FileText",
+      subs: ["IPTU", "IRPF", "Taxas diversas"],
+    },
+    {
+      name: "Juros e tarifas",
+      icon: "Percent",
+      subs: ["Juros de cartão/financiamento", "Tarifa bancária"],
+    },
+    {
+      name: "Família",
+      icon: "Users",
+      subs: ["Mesada", "Cuidados familiares"],
+    },
+    {
+      name: "Pets",
+      icon: "Dog",
+      subs: ["Vetinária", "Ração", "Higiene pet"],
+    },
+    {
+      name: "Doações",
+      icon: "Gift",
+      subs: ["Caridade", "Apoio social"],
+    },
+    {
+      name: "Trabalho",
+      icon: "Briefcase",
+      subs: ["Ferramentas", "Despesas profissionais"],
+    },
+    {
       name: "Receitas",
       icon: "TrendingUp",
-      subcategories: {
-        create: [
-          { userId: user.id, name: "Salário" },
-          { userId: user.id, name: "Honorários" },
-          { userId: user.id, name: "Dividendos" },
-        ],
-      },
+      subs: [
+        "Salário",
+        "Honorários",
+        "Serviços",
+        "Aluguéis",
+        "Dividendos",
+        "Juros recebidos",
+        "Rendimentos",
+        "Venda de bens",
+        "Reembolsos",
+        "Outras receitas",
+      ],
     },
-  });
+  ];
 
-  // 5. Ativos (Investimentos e Bens Físicos)
-  const assetImovel = await prisma.asset.create({
-    data: {
-      userId: user.id,
-      name: "Apartamento 3 Quartos (Jardins)",
-      category: "REAL_ESTATE",
-      description: "Imóvel residencial 110m²",
-      acquisitionValue: 350000.0,
-      currentValue: 420000.0,
-      considerInNetWorth: true,
-      valuations: {
-        create: [
-          { value: 350000.0, notes: "Valor de aquisição" },
-          { value: 420000.0, notes: "Avaliação imobiliária recente" },
-        ],
-      },
-    },
-  });
-
-  const assetCarro = await prisma.asset.create({
-    data: {
-      userId: user.id,
-      name: "Toyota Corolla Cross 2023",
-      category: "VEHICLE",
-      acquisitionValue: 140000.0,
-      currentValue: 125000.0,
-      considerInNetWorth: true,
-    },
-  });
-
-  const assetTesouro = await prisma.asset.create({
-    data: {
-      userId: user.id,
-      name: "Tesouro Selic 2029",
-      category: "FIXED_INCOME",
-      acquisitionValue: 50000.0,
-      currentValue: 58400.0,
-      considerInNetWorth: true,
-    },
-  });
-
-  const assetAcoes = await prisma.asset.create({
-    data: {
-      userId: user.id,
-      name: "Carteira de Ações / FIIs",
-      category: "FINANCIAL_TICKER",
-      acquisitionValue: 30000.0,
-      currentValue: 36500.0,
-      considerInNetWorth: true,
-    },
-  });
-
-  // 6. Passivos (Dívidas)
-  const liabFinanciamento = await prisma.liability.create({
-    data: {
-      userId: user.id,
-      name: "Financiamento Imobiliário CEF",
-      institution: "Caixa Econômica Federal",
-      type: "MORTGAGE",
-      originalValue: 280000.0,
-      currentBalance: 210000.0,
-      interestRate: 8.5,
-      totalInstallments: 360,
-      remainingInstallments: 280,
-      installmentValue: 2450.0,
-      associatedAssetId: assetImovel.id,
-    },
-  });
-
-  // 7. Snapshots Históricos para Evolução Patrimonial
-  const today = new Date();
-  for (let i = 5; i >= 0; i--) {
-    const d = new Date(today);
-    d.setMonth(d.getMonth() - i);
-
-    // Variação progressiva do patrimônio nos últimos 6 meses
-    const factor = 1 - i * 0.03;
-    await prisma.netWorthSnapshot.create({
+  for (const catData of categoriesData) {
+    const parent = await prisma.category.create({
       data: {
         userId: user.id,
-        date: d,
-        liquidAssets: 48000 * factor,
-        investmentAssets: 94000 * factor,
-        physicalAssets: 545000,
-        totalAssets: (48000 * factor) + (94000 * factor) + 545000,
-        totalLiabilities: 210000 + (i * 1200),
-        netWorth: ((48000 * factor) + (94000 * factor) + 545000) - (210000 + (i * 1200)),
+        name: catData.name,
+        icon: catData.icon,
       },
     });
+
+    for (const subName of catData.subs) {
+      await prisma.category.create({
+        data: {
+          userId: user.id,
+          name: subName,
+          parentId: parent.id,
+        },
+      });
+    }
   }
 
-  console.log("Seed concluído com sucesso!");
+  // 3. Catálogo de Instrumentos Financeiros Iniciais
+  const petr4 = await prisma.instrument.create({
+    data: {
+      symbol: "PETR4",
+      name: "Petrobras PN",
+      instrumentType: "STOCK",
+      exchange: "B3",
+    },
+  });
+
+  const hglg11 = await prisma.instrument.create({
+    data: {
+      symbol: "HGLG11",
+      name: "CSHG Logística FII",
+      instrumentType: "FII",
+      exchange: "B3",
+    },
+  });
+
+  const tesouroSelic = await prisma.instrument.create({
+    data: {
+      symbol: "TESOURO_SELIC_2029",
+      name: "Tesouro Selic 2029",
+      instrumentType: "TREASURY_BOND",
+      exchange: "MANUAL",
+    },
+  });
+
+  console.log("Seed de categorias e instrumentos concluído com sucesso!");
 }
 
 main()

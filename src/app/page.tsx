@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { NetWorthService, AccountData, AssetData, LiabilityData } from "@/lib/services/net-worth.service";
-import { formatCurrencyBRL, formatPercent } from "@/lib/decimal";
+import { formatCurrencyBRL } from "@/lib/decimal";
+import { ACCOUNT_TYPE_LABELS, TRANSACTION_TYPE_LABELS } from "@/lib/translations";
 import { NetWorthCharts } from "@/components/dashboard/NetWorthCharts";
 import {
   Wallet,
@@ -8,9 +9,11 @@ import {
   Building,
   TrendingDown,
   ShieldCheck,
+  Plus,
   ArrowUpRight,
   ArrowDownRight,
-  Plus,
+  Shuffle,
+  Layers,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -20,11 +23,24 @@ async function getDashboardData() {
   try {
     const user = await db.user.findFirst({
       include: {
-        accounts: true,
-        assets: true,
-        liabilities: true,
+        accounts: { where: { active: true } },
+        assets: { where: { active: true } },
+        investmentPositions: { where: { active: true } },
+        liabilities: { where: { active: true } },
         netWorthSnapshots: {
           orderBy: { date: "asc" },
+        },
+        transactions: {
+          orderBy: { date: "desc" },
+          take: 10,
+          include: {
+            account: true,
+            destinationAccount: true,
+            category: true,
+            allocations: {
+              include: { category: true },
+            },
+          },
         },
       },
     });
@@ -47,6 +63,12 @@ async function getDashboardData() {
       active: a.active,
     }));
 
+    // Adicionar Posições de Investimento aos Ativos de Investimento
+    const investmentPositionTotal = user.investmentPositions.reduce(
+      (acc, pos) => acc + pos.currentValue.toNumber(),
+      0
+    );
+
     const liabilities: LiabilityData[] = user.liabilities.map((l) => ({
       id: l.id,
       currentBalance: l.currentBalance.toString(),
@@ -55,7 +77,11 @@ async function getDashboardData() {
 
     const summary = NetWorthService.calculateSummary(accounts, assets, liabilities);
 
-    // Formatar histórico de snapshots
+    // Somar posições financeiras de investimento ao total de investimentos
+    summary.investmentAssets = summary.investmentAssets.add(investmentPositionTotal);
+    summary.totalAssets = summary.liquidAssets.add(summary.investmentAssets).add(summary.physicalAssets);
+    summary.netWorth = summary.totalAssets.sub(summary.totalLiabilities);
+
     const history = user.netWorthSnapshots.map((s) => ({
       dateStr: new Date(s.date).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
       netWorth: s.netWorth.toNumber(),
@@ -63,7 +89,39 @@ async function getDashboardData() {
       totalLiabilities: s.totalLiabilities.toNumber(),
     }));
 
-    return { user, summary, history, accounts: user.accounts, assets: user.assets, liabilities: user.liabilities };
+    // Receitas e Despesas do mês atual calculadas das transações reais
+    let currentMonthIncome = 0;
+    let currentMonthExpenses = 0;
+
+    for (const tx of user.transactions) {
+      if (tx.transactionType === "INCOME") {
+        currentMonthIncome += tx.amount.toNumber();
+      } else if (tx.transactionType === "EXPENSE" || tx.transactionType === "LIABILITY_PAYMENT") {
+        // Se houver allocations desmembradas, considera apenas a parte de despesa/juros/tarifas
+        if (tx.allocations && tx.allocations.length > 0) {
+          for (const alloc of tx.allocations) {
+            if (alloc.allocationType === "EXPENSE" || alloc.allocationType === "INTEREST" || alloc.allocationType === "FEE") {
+              currentMonthExpenses += alloc.amount.toNumber();
+            }
+          }
+        } else if (tx.transactionType === "EXPENSE") {
+          currentMonthExpenses += tx.amount.toNumber();
+        }
+      }
+    }
+
+    return {
+      user,
+      summary,
+      history,
+      accounts: user.accounts,
+      assets: user.assets,
+      liabilities: user.liabilities,
+      recentTransactions: user.transactions,
+      currentMonthIncome,
+      currentMonthExpenses,
+      currentMonthResult: currentMonthIncome - currentMonthExpenses,
+    };
   } catch (error) {
     console.error("Erro ao carregar dados do banco:", error);
     return null;
@@ -73,25 +131,19 @@ async function getDashboardData() {
 export default async function DashboardPage() {
   const data = await getDashboardData();
 
-  // Dados computados ou fallback seguro para renderização inicial
+  const hasData = data && (data.accounts.length > 0 || data.assets.length > 0 || data.liabilities.length > 0);
+
   const summary = data?.summary || {
-    liquidAssets: new (require("@/lib/decimal").Decimal)(48650.5),
-    investmentAssets: new (require("@/lib/decimal").Decimal)(96100.0),
-    physicalAssets: new (require("@/lib/decimal").Decimal)(545000.0),
-    totalAssets: new (require("@/lib/decimal").Decimal)(689750.5),
-    totalLiabilities: new (require("@/lib/decimal").Decimal)(210000.0),
-    netWorth: new (require("@/lib/decimal").Decimal)(479750.5),
-    liquidNetWorth: new (require("@/lib/decimal").Decimal)(334750.5),
+    liquidAssets: new (require("@/lib/decimal").Decimal)(0),
+    investmentAssets: new (require("@/lib/decimal").Decimal)(0),
+    physicalAssets: new (require("@/lib/decimal").Decimal)(0),
+    totalAssets: new (require("@/lib/decimal").Decimal)(0),
+    totalLiabilities: new (require("@/lib/decimal").Decimal)(0),
+    netWorth: new (require("@/lib/decimal").Decimal)(0),
+    liquidNetWorth: new (require("@/lib/decimal").Decimal)(0),
   };
 
-  const history = data?.history || [
-    { dateStr: "Mar/26", netWorth: 410000, totalAssets: 630000, totalLiabilities: 220000 },
-    { dateStr: "Abr/26", netWorth: 425000, totalAssets: 643000, totalLiabilities: 218000 },
-    { dateStr: "Mai/26", netWorth: 438000, totalAssets: 654000, totalLiabilities: 216000 },
-    { dateStr: "Jun/26", netWorth: 452000, totalAssets: 666000, totalLiabilities: 214000 },
-    { dateStr: "Jul/26", netWorth: 466000, totalAssets: 678000, totalLiabilities: 212000 },
-    { dateStr: "Ago/26", netWorth: summary.netWorth.toNumber(), totalAssets: summary.totalAssets.toNumber(), totalLiabilities: summary.totalLiabilities.toNumber() },
-  ];
+  const history = data?.history || [];
 
   const allocations = [
     { name: "Disponível", value: summary.liquidAssets.toNumber(), color: "#06b6d4" },
@@ -122,36 +174,20 @@ export default async function DashboardPage() {
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="glass-panel px-4 py-2.5 rounded-2xl border border-emerald-500/20 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-400">
-                <ArrowUpRight className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-[11px] text-muted-foreground font-medium">Variação Mês</p>
-                <p className="text-sm font-bold text-emerald-400">+R$ 13.750,50 (+2,95%)</p>
-              </div>
+          {!hasData && (
+            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 space-y-1">
+              <p className="font-bold">Bem-vindo ao Aegis Riqueza!</p>
+              <p className="text-emerald-300/80">Comece cadastrando suas contas, bens e investimentos para ver a evolução patrimonial real.</p>
             </div>
-
-            <div className="glass-panel px-4 py-2.5 rounded-2xl border border-cyan-500/20 flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400">
-                <TrendingUp className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-[11px] text-muted-foreground font-medium">Variação Ano</p>
-                <p className="text-sm font-bold text-cyan-400">+R$ 69.750,50 (+17,0%)</p>
-              </div>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 
       {/* Cartões dos 4 Pilares Patrimoniais */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* 1. Disponível */}
         <Link href="/contas" className="glass-card p-5 rounded-2xl block group">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Disponível</span>
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dinheiro Disponível</span>
             <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 transition-all">
               <Wallet className="w-5 h-5" />
             </div>
@@ -159,13 +195,12 @@ export default async function DashboardPage() {
           <div className="text-2xl font-bold text-white mb-1">
             {formatCurrencyBRL(summary.liquidAssets)}
           </div>
-          <p className="text-xs text-muted-foreground">Contas correntes, saldos e caixa</p>
+          <p className="text-xs text-muted-foreground">Contas correntes, poupança e carteira</p>
         </Link>
 
-        {/* 2. Investido */}
         <Link href="/patrimonio" className="glass-card p-5 rounded-2xl block group">
           <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Investido</span>
+            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Investimentos</span>
             <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition-all">
               <TrendingUp className="w-5 h-5" />
             </div>
@@ -176,7 +211,6 @@ export default async function DashboardPage() {
           <p className="text-xs text-muted-foreground">Tesouro, Ações, FIIs e saldo corretora</p>
         </Link>
 
-        {/* 3. Bens */}
         <Link href="/patrimonio" className="glass-card p-5 rounded-2xl block group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bens Patrimoniais</span>
@@ -190,7 +224,6 @@ export default async function DashboardPage() {
           <p className="text-xs text-muted-foreground">Imóveis, veículos e equipamentos</p>
         </Link>
 
-        {/* 4. Dívidas */}
         <Link href="/dividas" className="glass-card p-5 rounded-2xl block group">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dívidas (Passivos)</span>
@@ -205,31 +238,80 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Gráficos de Evolução & Alocação */}
-      <NetWorthCharts history={history} allocations={allocations} />
-
-      {/* Acesso Rápido a Operações */}
+      {/* Bloco Este Mês */}
       <div className="glass-card p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h4 className="font-bold text-white text-base">Registrar Movimentação Real</h4>
-          <p className="text-xs text-muted-foreground">Lançar receita, despesa, transferência neutra ou amortização de passivo</p>
+          <h3 className="font-bold text-white text-base">Este Mês (Movimentações Reais)</h3>
+          <p className="text-xs text-muted-foreground">Resumo de receitas operacionais e despesas de consumo</p>
         </div>
+
         <div className="flex items-center gap-3 w-full sm:w-auto">
-          <Link
-            href="/transacoes"
-            className="flex-1 sm:flex-initial px-4 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 text-white text-xs font-semibold text-center border border-white/10 transition-all"
-          >
-            Ver Transações
-          </Link>
-          <Link
-            href="/transacoes?nova=true"
-            className="flex-1 sm:flex-initial flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Nova Operação</span>
-          </Link>
+          <div className="glass-panel px-4 py-2 rounded-xl border border-emerald-500/20 text-center">
+            <span className="text-[10px] text-muted-foreground uppercase block">Recebi</span>
+            <span className="text-sm font-bold text-emerald-400">+{formatCurrencyBRL(data?.currentMonthIncome || 0)}</span>
+          </div>
+
+          <div className="glass-panel px-4 py-2 rounded-xl border border-rose-500/20 text-center">
+            <span className="text-[10px] text-muted-foreground uppercase block">Gastei</span>
+            <span className="text-sm font-bold text-rose-400">-{formatCurrencyBRL(data?.currentMonthExpenses || 0)}</span>
+          </div>
+
+          <div className="glass-panel px-4 py-2 rounded-xl border border-white/10 text-center">
+            <span className="text-[10px] text-muted-foreground uppercase block">Resultado</span>
+            <span className="text-sm font-bold text-white">{formatCurrencyBRL(data?.currentMonthResult || 0)}</span>
+          </div>
         </div>
       </div>
+
+      {/* Gráficos de Evolução & Alocação */}
+      {history.length > 0 ? (
+        <NetWorthCharts history={history} allocations={allocations} />
+      ) : (
+        <div className="glass-card p-8 rounded-2xl text-center text-xs text-muted-foreground space-y-2">
+          <p className="font-bold text-white">Histórico de Evolução Patrimonial</p>
+          <p>O gráfico de evolução histórica será disponibilizado após os primeiros registros do seu patrimônio.</p>
+        </div>
+      )}
+
+      {/* Feed de Transações Recentes */}
+      {data?.recentTransactions && data.recentTransactions.length > 0 && (
+        <div className="glass-card p-6 rounded-2xl space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-bold text-white text-base">Últimas Movimentações</h3>
+            <Link href="/transacoes" className="text-xs text-emerald-400 hover:underline font-semibold">
+              Ver todas
+            </Link>
+          </div>
+
+          <div className="space-y-2.5">
+            {data.recentTransactions.map((tx) => {
+              const isCredit = tx.direction === "CREDIT";
+              const isTransfer = tx.transactionType === "TRANSFER";
+              const label = TRANSACTION_TYPE_LABELS[tx.transactionType] || tx.transactionType;
+
+              return (
+                <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 text-xs">
+                  <div className="flex items-center gap-3">
+                    <div className={`p-2 rounded-lg ${isTransfer ? "bg-purple-500/20 text-purple-400" : isCredit ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}>
+                      {isTransfer ? <Shuffle className="w-4 h-4" /> : isCredit ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
+                    </div>
+                    <div>
+                      <p className="font-bold text-white">{tx.description}</p>
+                      <p className="text-[11px] text-muted-foreground">
+                        {tx.account.name} {tx.destinationAccount ? `➔ ${tx.destinationAccount.name}` : ""} • {label}
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className={`font-bold text-sm ${isTransfer ? "text-purple-400" : isCredit ? "text-emerald-400" : "text-white"}`}>
+                    {isCredit ? "+" : "-"}{formatCurrencyBRL(tx.amount.toNumber())}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

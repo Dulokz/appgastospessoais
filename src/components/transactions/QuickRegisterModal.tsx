@@ -1,31 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   X,
   TrendingDown,
   TrendingUp,
   ArrowRightLeft,
   ShoppingBag,
-  Check,
   Building,
 } from "lucide-react";
-import { formatCurrencyBRL } from "@/lib/decimal";
+import { createQuickTransaction } from "@/lib/actions/db-actions";
 
 interface QuickRegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
   accounts: { id: string; name: string }[];
   categories: { id: string; name: string }[];
-  onSave: (data: any) => void;
+  onSave?: (data: any) => void;
 }
+
+const ASSET_CATEGORIES = [
+  { value: "REAL_ESTATE", label: "Imóvel" },
+  { value: "VEHICLE", label: "Veículo" },
+  { value: "EQUIPMENT", label: "Eletrônico / Equipamento" },
+  { value: "CORPORATE_SHARE", label: "Participação societária" },
+  { value: "OTHER", label: "Outro bem" },
+];
 
 export function QuickRegisterModal({
   isOpen,
   onClose,
   accounts,
   categories,
-  onSave,
 }: QuickRegisterModalProps) {
   const [flow, setFlow] = useState<"GASTEI" | "RECEBI" | "TRANSFERI" | "COMPREI_BEM" | null>(null);
 
@@ -40,6 +46,16 @@ export function QuickRegisterModal({
   const [treatAs, setTreatAs] = useState<"EXPENSE" | "ASSET">("ASSET");
   const [assetName, setAssetName] = useState<string>("");
   const [assetCategory, setAssetCategory] = useState<string>("EQUIPMENT");
+  const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+  const amountInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (flow && amountInputRef.current) {
+      amountInputRef.current.focus();
+    }
+  }, [flow]);
 
   if (!isOpen) return null;
 
@@ -48,25 +64,47 @@ export function QuickRegisterModal({
     setAmount("");
     setDescription("");
     setAssetName("");
+    setErrorMsg(null);
   };
 
-  const handleSave = () => {
-    if (!amount || parseFloat(amount) <= 0) return;
+  const handleSave = async () => {
+    setErrorMsg(null);
+    const parsedAmount = parseFloat(amount);
 
-    onSave({
-      flow,
-      amount: parseFloat(amount),
-      sourceAccountId,
-      destAccountId,
-      categoryId,
-      description: description || assetName || (flow === "GASTEI" ? "Despesa" : flow === "RECEBI" ? "Receita" : "Transferência"),
-      treatAs,
-      assetName,
-      assetCategory,
-    });
+    if (!amount || isNaN(parsedAmount) || parsedAmount <= 0) {
+      setErrorMsg("Por favor, informe um valor válido maior que zero.");
+      return;
+    }
 
-    handleReset();
-    onClose();
+    if (flow === "TRANSFERI" && sourceAccountId === destAccountId) {
+      setErrorMsg("A conta de origem e a conta de destino devem ser diferentes.");
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      await createQuickTransaction({
+        flow: flow!,
+        amount: parsedAmount,
+        sourceAccountId,
+        destAccountId: flow === "TRANSFERI" ? destAccountId : undefined,
+        categoryId: (flow === "GASTEI" || flow === "RECEBI") ? categoryId : undefined,
+        description: description || assetName || (flow === "GASTEI" ? "Despesa" : flow === "RECEBI" ? "Receita" : "Transferência"),
+        treatAs,
+        assetName,
+        assetCategory,
+      });
+
+      handleReset();
+      onClose();
+      window.location.reload();
+    } catch (err: any) {
+      console.error("Erro ao salvar transação rápida:", err);
+      setErrorMsg(err.message || "Erro ao registrar a movimentação.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -94,6 +132,12 @@ export function QuickRegisterModal({
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {errorMsg && (
+          <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs font-medium">
+            {errorMsg}
+          </div>
+        )}
 
         {/* Escolha Inicial de 4 Opções Grandes */}
         {!flow && (
@@ -151,13 +195,13 @@ export function QuickRegisterModal({
             <div>
               <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor (R$)</label>
               <input
+                ref={amountInputRef}
                 type="number"
                 step="0.01"
                 placeholder="0,00"
                 value={amount}
                 onChange={(e) => setAmount(e.target.value)}
                 className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-2xl font-bold text-white focus:outline-none focus:border-emerald-500"
-                autoFocus
               />
             </div>
 
@@ -198,7 +242,7 @@ export function QuickRegisterModal({
             )}
 
             {/* Se for GASTEI ou RECEBI: Categoria */}
-            {(flow === "GASTEI" || flow === "RECEBI") && (
+            {(flow === "GASTEI" || flow === "RECEBI") && categories.length > 0 && (
               <div>
                 <label className="text-xs text-muted-foreground font-semibold block mb-1">Categoria</label>
                 <select
@@ -215,11 +259,11 @@ export function QuickRegisterModal({
               </div>
             )}
 
-            {/* Se for COMPREI UM BEM: Tratamento e Nome do Bem */}
+            {/* Se for COMPREI UM BEM: Tratamento, Nome e Categoria do Bem */}
             {flow === "COMPREI_BEM" && (
               <div className="space-y-3 p-4 rounded-2xl bg-white/5 border border-white/10">
                 <div>
-                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Nome do Bem (ex: iPhone 15, Notebook)</label>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Nome do Bem (ex: iPhone 15, Corolla)</label>
                   <input
                     type="text"
                     placeholder="Descrição do bem"
@@ -228,6 +272,23 @@ export function QuickRegisterModal({
                     className="w-full px-4 py-2 rounded-xl bg-slate-800 border border-white/10 text-sm text-white focus:outline-none"
                   />
                 </div>
+
+                {treatAs === "ASSET" && (
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold block mb-1">Categoria do Bem</label>
+                    <select
+                      value={assetCategory}
+                      onChange={(e) => setAssetCategory(e.target.value)}
+                      className="w-full px-4 py-2 rounded-xl bg-slate-800 border border-white/10 text-xs text-white focus:outline-none"
+                    >
+                      {ASSET_CATEGORIES.map((c) => (
+                        <option key={c.value} value={c.value}>
+                          {c.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
 
                 <div>
                   <label className="text-xs text-muted-foreground font-semibold block mb-2">Como deseja tratar essa aquisição?</label>
@@ -288,9 +349,10 @@ export function QuickRegisterModal({
               <button
                 type="button"
                 onClick={handleSave}
+                disabled={loading || !amount}
                 className="px-6 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-white shadow-lg shadow-emerald-500/20"
               >
-                Salvar Movimentação
+                {loading ? "Salvando..." : "Salvar Movimentação"}
               </button>
             </div>
           </div>
