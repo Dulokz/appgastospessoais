@@ -5,6 +5,143 @@ import { getDefaultUserId } from "@/lib/auth-user";
 import { revalidatePath } from "next/cache";
 
 // ----------------------------------------------------
+// ONBOARDING FINANCEIRO PATRIMONIAL ATÔMICO
+// ----------------------------------------------------
+export async function getUserOnboardingStatus() {
+  const userId = await getDefaultUserId();
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: { id: true, controlStartDate: true },
+  });
+
+  return {
+    isCompleted: !!user?.controlStartDate,
+    controlStartDate: user?.controlStartDate,
+  };
+}
+
+export async function saveOnboardingInitialPosition(data: {
+  controlStartDate: string;
+  accounts: { name: string; type: string; institutionName?: string; initialBalance: number }[];
+  investments: { accountIndex: number; instrumentName: string; instrumentType: string; currentValue: number }[];
+  assets: { name: string; category: string; currentValue: number; notes?: string }[];
+  liabilities: { name: string; type: string; institution?: string; currentBalance: number }[];
+}) {
+  const userId = await getDefaultUserId();
+  const startDate = new Date(data.controlStartDate);
+
+  return db.$transaction(async (tx) => {
+    await tx.user.update({
+      where: { id: userId },
+      data: { controlStartDate: startDate },
+    });
+
+    const createdAccounts: any[] = [];
+    for (const acc of data.accounts) {
+      let institutionId: string | undefined;
+      if (acc.institutionName) {
+        let inst = await tx.financialInstitution.findFirst({
+          where: { userId, name: acc.institutionName },
+        });
+        if (!inst) {
+          inst = await tx.financialInstitution.create({
+            data: { userId, name: acc.institutionName },
+          });
+        }
+        institutionId = inst.id;
+      }
+
+      const newAcc = await tx.account.create({
+        data: {
+          userId,
+          financialInstitutionId: institutionId,
+          name: acc.name,
+          type: acc.type,
+          initialBalance: acc.initialBalance,
+          calculatedBalance: acc.initialBalance,
+          confirmedBalance: acc.initialBalance,
+        },
+      });
+      createdAccounts.push(newAcc);
+    }
+
+    for (const inv of data.investments) {
+      const targetAccount = createdAccounts[inv.accountIndex] || createdAccounts[0];
+      if (!targetAccount) continue;
+
+      let instrument = await tx.instrument.findFirst({
+        where: { name: inv.instrumentName },
+      });
+
+      if (!instrument) {
+        instrument = await tx.instrument.create({
+          data: {
+            name: inv.instrumentName,
+            instrumentType: inv.instrumentType,
+          },
+        });
+      }
+
+      const position = await tx.investmentPosition.create({
+        data: {
+          userId,
+          accountId: targetAccount.id,
+          instrumentId: instrument.id,
+          acquisitionValue: inv.currentValue,
+          currentValue: inv.currentValue,
+        },
+      });
+
+      await tx.investmentEvent.create({
+        data: {
+          userId,
+          investmentPositionId: position.id,
+          type: "INITIAL_POSITION",
+          amount: inv.currentValue,
+          notes: "Posição inicial do onboarding",
+        },
+      });
+    }
+
+    for (const ast of data.assets) {
+      await tx.asset.create({
+        data: {
+          userId,
+          name: ast.name,
+          category: ast.category,
+          entryMethod: "INITIAL_POSITION",
+          acquisitionValue: ast.currentValue,
+          currentValue: ast.currentValue,
+          notes: ast.notes,
+        },
+      });
+    }
+
+    for (const liab of data.liabilities) {
+      await tx.liability.create({
+        data: {
+          userId,
+          name: liab.name,
+          type: liab.type,
+          institution: liab.institution,
+          originalValue: liab.currentBalance,
+          currentBalance: liab.currentBalance,
+          isInitialPosition: true,
+        },
+      });
+    }
+
+    revalidatePath("/");
+    revalidatePath("/contas");
+    revalidatePath("/patrimonio");
+    revalidatePath("/dividas");
+    revalidatePath("/investimentos");
+    revalidatePath("/meu-patrimonio");
+    return { success: true };
+  });
+}
+
+// ----------------------------------------------------
 // CONTAS
 // ----------------------------------------------------
 export async function getAccounts() {
@@ -18,7 +155,7 @@ export async function getAccounts() {
 
 export async function createAccount(data: {
   name: string;
-  type: "CHECKING" | "SAVINGS" | "CASH" | "BROKERAGE" | "INVESTMENT" | "OTHER";
+  type: string;
   institutionName?: string;
   initialBalance: number;
 }) {
@@ -69,7 +206,7 @@ export async function archiveAccount(id: string) {
 }
 
 // ----------------------------------------------------
-// ATIVOS (BENS PATRIMONIAIS NÃO FINANCEIROS)
+// ATIVOS (CADASTRO PATRIMONIAL E AQUISIÇÕES)
 // ----------------------------------------------------
 export async function getAssets() {
   const userId = await getDefaultUserId();
@@ -79,24 +216,29 @@ export async function getAssets() {
   });
 }
 
-export async function createAsset(data: {
+export async function createAssetWithEntryMethod(data: {
   name: string;
-  category: "REAL_ESTATE" | "VEHICLE" | "EQUIPMENT" | "CORPORATE_SHARE" | "OTHER";
-  acquisitionValue: number;
+  category: string;
+  entryMethod: "INITIAL_POSITION" | "PURCHASE_CASH" | "PURCHASE_FINANCED" | "DONATION_INHERITANCE" | "OTHER";
   currentValue: number;
-  considerInNetWorth?: boolean;
+  sourceAccountId?: string;
+  downPaymentAmount?: number;
+  financedAmount?: number;
+  institutionName?: string;
+  installments?: number;
   notes?: string;
 }) {
   const userId = await getDefaultUserId();
+
   return db.$transaction(async (tx) => {
     const asset = await tx.asset.create({
       data: {
         userId,
         name: data.name,
         category: data.category,
-        acquisitionValue: data.acquisitionValue,
+        entryMethod: data.entryMethod,
+        acquisitionValue: data.currentValue,
         currentValue: data.currentValue,
-        considerInNetWorth: data.considerInNetWorth ?? true,
         notes: data.notes,
         valuations: {
           create: [{ value: data.currentValue, notes: "Avaliação inicial" }],
@@ -104,8 +246,98 @@ export async function createAsset(data: {
       },
     });
 
+    if (data.entryMethod === "PURCHASE_CASH") {
+      if (!data.sourceAccountId) throw new Error("Conta bancária de saída é obrigatória para compra à vista.");
+
+      const sourceAcc = await tx.account.findFirst({
+        where: { id: data.sourceAccountId, userId },
+      });
+      if (!sourceAcc) throw new Error("Conta de origem não pertence ao usuário.");
+
+      await tx.transaction.create({
+        data: {
+          userId,
+          accountId: data.sourceAccountId,
+          amount: data.currentValue,
+          direction: "DEBIT",
+          transactionType: "ASSET_PURCHASE",
+          description: `Aquisição de Ativo: ${asset.name}`,
+          allocations: {
+            create: [
+              {
+                allocationType: "ASSET_INCREASE",
+                amount: data.currentValue,
+                assetId: asset.id,
+              },
+            ],
+          },
+        },
+      });
+
+      await tx.account.update({
+        where: { id: data.sourceAccountId },
+        data: { calculatedBalance: { decrement: data.currentValue } },
+      });
+    }
+
+    if (data.entryMethod === "PURCHASE_FINANCED") {
+      const downPayment = data.downPaymentAmount || 0;
+      const financed = data.financedAmount || Math.max(0, data.currentValue - downPayment);
+
+      if (downPayment > 0 && data.sourceAccountId) {
+        const sourceAcc = await tx.account.findFirst({
+          where: { id: data.sourceAccountId, userId },
+        });
+        if (!sourceAcc) throw new Error("Conta de origem da entrada não pertence ao usuário.");
+
+        await tx.transaction.create({
+          data: {
+            userId,
+            accountId: data.sourceAccountId,
+            amount: downPayment,
+            direction: "DEBIT",
+            transactionType: "ASSET_PURCHASE",
+            description: `Entrada em Financiamento de Ativo: ${asset.name}`,
+            allocations: {
+              create: [
+                {
+                  allocationType: "ASSET_INCREASE",
+                  amount: downPayment,
+                  assetId: asset.id,
+                },
+              ],
+            },
+          },
+        });
+
+        await tx.account.update({
+          where: { id: data.sourceAccountId },
+          data: { calculatedBalance: { decrement: downPayment } },
+        });
+      }
+
+      if (financed > 0) {
+        await tx.liability.create({
+          data: {
+            userId,
+            name: `Financiamento: ${asset.name}`,
+            institution: data.institutionName || null,
+            type: "MORTGAGE",
+            originalValue: financed,
+            currentBalance: financed,
+            totalInstallments: data.installments || null,
+            associatedAssetId: asset.id,
+            isInitialPosition: false,
+          },
+        });
+      }
+    }
+
     revalidatePath("/");
     revalidatePath("/patrimonio");
+    revalidatePath("/contas");
+    revalidatePath("/dividas");
+    revalidatePath("/meu-patrimonio");
     return asset;
   });
 }
@@ -124,7 +356,7 @@ export async function getLiabilities() {
 
 export async function createLiability(data: {
   name: string;
-  type: "MORTGAGE" | "VEHICLE_LOAN" | "PERSONAL_LOAN" | "INSTALLMENT" | "CREDIT_CARD" | "OTHER";
+  type: string;
   institution?: string;
   originalValue: number;
   currentBalance: number;
@@ -544,70 +776,6 @@ export async function createQuickTransaction(data: {
         where: { id: data.destAccountId },
         data: { calculatedBalance: { increment: data.amount } },
       });
-    } else if (data.flow === "COMPREI_BEM") {
-      if (data.treatAs === "ASSET") {
-        const newAsset = await tx.asset.create({
-          data: {
-            userId,
-            name: data.assetName || data.description,
-            category: (data.assetCategory as any) || "EQUIPMENT",
-            acquisitionValue: data.amount,
-            currentValue: data.amount,
-            considerInNetWorth: true,
-          },
-        });
-
-        await tx.transaction.create({
-          data: {
-            userId,
-            accountId: data.sourceAccountId,
-            amount: data.amount,
-            direction: "DEBIT",
-            transactionType: "ASSET_PURCHASE",
-            description: `Compra de Bem: ${newAsset.name}`,
-            allocations: {
-              create: [
-                {
-                  allocationType: "ASSET_INCREASE",
-                  amount: data.amount,
-                  assetId: newAsset.id,
-                },
-              ],
-            },
-          },
-        });
-
-        await tx.account.update({
-          where: { id: data.sourceAccountId },
-          data: { calculatedBalance: { decrement: data.amount } },
-        });
-      } else {
-        await tx.transaction.create({
-          data: {
-            userId,
-            accountId: data.sourceAccountId,
-            amount: data.amount,
-            direction: "DEBIT",
-            transactionType: "EXPENSE",
-            categoryId: data.categoryId,
-            description: data.description || data.assetName || "Compra de bem (gasto)",
-            allocations: {
-              create: [
-                {
-                  allocationType: "EXPENSE",
-                  amount: data.amount,
-                  categoryId: data.categoryId,
-                },
-              ],
-            },
-          },
-        });
-
-        await tx.account.update({
-          where: { id: data.sourceAccountId },
-          data: { calculatedBalance: { decrement: data.amount } },
-        });
-      }
     }
   });
 
@@ -615,14 +783,12 @@ export async function createQuickTransaction(data: {
   revalidatePath("/contas");
   revalidatePath("/patrimonio");
   revalidatePath("/transacoes");
-  revalidatePath("/relatorios");
-  revalidatePath("/meu-patrimonio");
   revalidatePath("/resultado-mes");
   revalidatePath("/investimentos");
 }
 
 // ----------------------------------------------------
-// FASE 3A.1: POSIÇÕES DE INVESTIMENTO & INSTRUMENTOS ROBUSTOS
+// POSIÇÕES DE INVESTIMENTO & EVENTOS
 // ----------------------------------------------------
 export async function getInvestmentPositions() {
   const userId = await getDefaultUserId();
@@ -645,7 +811,7 @@ export async function createInvestmentPosition(data: {
   instrumentName: string;
   symbol?: string;
   exchange?: string;
-  instrumentType: "STOCK" | "FII" | "BDR" | "ETF" | "TREASURY_BOND" | "INVESTMENT_FUND" | "FIXED_INCOME" | "CRYPTO" | "OTHER";
+  instrumentType: string;
   quantity?: number;
   averageCost?: number;
   acquisitionValue: number;

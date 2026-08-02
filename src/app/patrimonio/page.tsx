@@ -1,39 +1,44 @@
-import { db } from "@/lib/db";
-import { ASSET_CATEGORY_LABELS } from "@/lib/translations";
+import { getAssets, getAccounts, getCategories } from "@/lib/actions/db-actions";
 import { PatrimonioClient } from "./PatrimonioClient";
 
 export const dynamic = "force-dynamic";
 
-async function getAssetsData() {
-  try {
-    const user = await db.user.findFirst({
-      include: {
-        assets: {
-          where: { active: true },
-          orderBy: { createdAt: "asc" },
-        },
-      },
-    });
-
-    return user?.assets || [];
-  } catch (error) {
-    console.error("Erro ao carregar ativos:", error);
-    return [];
-  }
-}
-
 export default async function PatrimonioPage() {
-  const dbAssets = await getAssetsData();
+  const [dbAssets, dbAccounts, dbCategories] = await Promise.all([
+    getAssets(),
+    getAccounts(),
+    getCategories(),
+  ]);
 
-  const assets = dbAssets.map((a) => ({
+  const formattedAssets = dbAssets.map((a) => ({
     id: a.id,
     name: a.name,
     category: a.category,
-    categoryLabel: ASSET_CATEGORY_LABELS[a.category] || a.category,
-    acqValue: a.acquisitionValue.toNumber(),
+    entryMethod: a.entryMethod,
+    acquisitionValue: a.acquisitionValue.toNumber(),
     currentValue: a.currentValue.toNumber(),
-    inNetWorth: a.considerInNetWorth,
+    considerInNetWorth: a.considerInNetWorth,
   }));
 
-  return <PatrimonioClient initialAssets={assets} />;
+  const formattedAccounts = dbAccounts.map((acc) => ({
+    id: acc.id,
+    name: `${acc.name} ${acc.financialInstitution ? `(${acc.financialInstitution.name})` : ""}`,
+  }));
+
+  const formattedCategories = dbCategories.map((c) => ({
+    id: c.id,
+    name: c.name,
+    subcategories: c.subcategories.map((sub) => ({
+      id: sub.id,
+      name: sub.name,
+    })),
+  }));
+
+  return (
+    <PatrimonioClient
+      initialAssets={formattedAssets}
+      accounts={formattedAccounts}
+      categories={formattedCategories}
+    />
+  );
 }

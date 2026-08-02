@@ -7,13 +7,22 @@ generator client {
   provider = "prisma-client-js"
 }
 
+enum AssetEntryMethod {
+  INITIAL_POSITION
+  PURCHASE_CASH
+  PURCHASE_FINANCED
+  DONATION_INHERITANCE
+  OTHER
+}
+
 model User {
-  id        String    @id @default(uuid())
-  name      String
-  email     String    @unique
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  deletedAt DateTime?
+  id               String    @id @default(uuid())
+  name             String
+  email            String    @unique
+  controlStartDate DateTime? // Data-Base de início do controle financeiro
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  deletedAt        DateTime?
 
   accounts                Account[]
   assets                  Asset[]
@@ -52,10 +61,10 @@ model Account {
   type                   String               // CHECKING, SAVINGS, CASH, BROKERAGE, INVESTMENT, OTHER
   
   // Controle de Saldos e Conciliação
-  initialBalance         Decimal              @default(0)
-  calculatedBalance      Decimal              @default(0) // Derivado das transações
-  confirmedBalance       Decimal?                         // Saldo informado pela instituição
-  reconciliationDiff     Decimal              @default(0) // confirmedBalance - calculatedBalance
+  initialBalance         Decimal              @default(0) @db.Decimal(18, 4) // Saldo de Abertura na Data-Base
+  calculatedBalance      Decimal              @default(0) @db.Decimal(18, 4) // Saldo Atual (Abertura + Movimentações)
+  confirmedBalance       Decimal?             @db.Decimal(18, 4)             // Saldo informado pela instituição
+  reconciliationDiff     Decimal              @default(0) @db.Decimal(18, 4) // confirmedBalance - calculatedBalance
   lastSyncAt             DateTime?
   
   currency               String               @default("BRL")
@@ -86,6 +95,9 @@ model Instrument {
   updatedAt      DateTime       @updatedAt
 
   positions      InvestmentPosition[]
+
+  @@unique([source, externalId])
+  @@unique([symbol, exchange])
 }
 
 model InvestmentPosition {
@@ -97,11 +109,11 @@ model InvestmentPosition {
   instrumentId     String
   instrument       Instrument  @relation(fields: [instrumentId], references: [id])
   
-  quantity         Decimal?
-  averageCost      Decimal?
-  currentPrice     Decimal?
-  currentValue     Decimal
-  acquisitionValue Decimal
+  quantity         Decimal?    @db.Decimal(18, 6) // Opcional (QUANTITY_BASED vs VALUE_BASED)
+  averageCost      Decimal?    @db.Decimal(18, 4)
+  currentPrice     Decimal?    @db.Decimal(18, 4)
+  currentValue     Decimal     @db.Decimal(18, 4)
+  acquisitionValue Decimal     @db.Decimal(18, 4)
   lastPriceAt      DateTime?
   
   active           Boolean     @default(true)
@@ -125,9 +137,9 @@ model InvestmentEvent {
   transaction          Transaction?        @relation(fields: [transactionId], references: [id])
   type                 String              // INITIAL_POSITION, CONTRIBUTION, WITHDRAWAL, INCOME_RECEIVED, DIVIDEND, JCP, APPRECIATION, DEPRECIATION, REALIZED_GAIN
   date                 DateTime            @default(now())
-  amount               Decimal
-  quantity             Decimal?
-  unitPrice            Decimal?
+  amount               Decimal             @db.Decimal(18, 4)
+  quantity             Decimal?            @db.Decimal(18, 6)
+  unitPrice            Decimal?            @db.Decimal(18, 4)
   notes                String?
   source               String              @default("MANUAL")
   externalId           String?
@@ -140,9 +152,9 @@ model InvestmentPositionSnapshot {
   investmentPositionId String
   investmentPosition   InvestmentPosition @relation(fields: [investmentPositionId], references: [id], onDelete: Cascade)
   date                 DateTime           @default(now())
-  quantity             Decimal?
-  unitPrice            Decimal?
-  currentValue         Decimal
+  quantity             Decimal?           @db.Decimal(18, 6)
+  unitPrice            Decimal?           @db.Decimal(18, 4)
+  currentValue         Decimal            @db.Decimal(18, 4)
   source               String             @default("MANUAL")
   createdAt            DateTime           @default(now())
 }
@@ -153,10 +165,11 @@ model Asset {
   user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   name                 String            // ex: Apartamento Jardins, Toyota Corolla
   category             String            // REAL_ESTATE, VEHICLE, EQUIPMENT, CORPORATE_SHARE, OTHER
+  entryMethod          AssetEntryMethod  @default(INITIAL_POSITION) // ÚNICA FONTE DE VERDADE PARA TIPO DE ENTRADA
   description          String?
   acquisitionDate      DateTime?
-  acquisitionValue     Decimal
-  currentValue         Decimal
+  acquisitionValue     Decimal           @db.Decimal(18, 4)
+  currentValue         Decimal           @db.Decimal(18, 4)
   lastValuationDate    DateTime          @default(now())
   notes                String?
   active               Boolean           @default(true)
@@ -166,7 +179,7 @@ model Asset {
   deletedAt            DateTime?
 
   valuations           AssetValuation[]
-  liabilities          Liability[]       // Dívidas associadas
+  liabilities          Liability[]       // Dívidas associadas (ex: financiamento imobiliário)
   allocations          TransactionAllocation[]
 }
 
@@ -175,7 +188,7 @@ model AssetValuation {
   assetId     String
   asset       Asset    @relation(fields: [assetId], references: [id], onDelete: Cascade)
   date        DateTime @default(now())
-  value       Decimal
+  value       Decimal  @db.Decimal(18, 4)
   source      String   @default("MANUAL")
   notes       String?
   createdAt   DateTime @default(now())
@@ -188,15 +201,16 @@ model Liability {
   name                  String        // Financiamento CEF Apt 302
   institution           String?       // Caixa Econômica Federal
   type                  String        // MORTGAGE, VEHICLE_LOAN, PERSONAL_LOAN, INSTALLMENT, CREDIT_CARD, OTHER
-  originalValue         Decimal
-  currentBalance        Decimal       // Saldo devedor atual
+  originalValue         Decimal       @db.Decimal(18, 4)
+  currentBalance        Decimal       @db.Decimal(18, 4) // Saldo devedor atual
   startDate             DateTime?
-  interestRate          Decimal?      // Taxa de juros ao ano/mês
+  interestRate          Decimal?      @db.Decimal(8, 4)  // Taxa de juros ao ano/mês
   totalInstallments     Int?
   remainingInstallments Int?
-  installmentValue      Decimal?
+  installmentValue      Decimal?      @db.Decimal(18, 4)
   associatedAssetId     String?
   associatedAsset       Asset?        @relation(fields: [associatedAssetId], references: [id])
+  isInitialPosition     Boolean       @default(true)
   active                Boolean       @default(true)
   notes                 String?
   createdAt             DateTime      @default(now())
@@ -234,9 +248,9 @@ model Transaction {
   destinationAccount   Account?             @relation("TransferDestinationAccount", fields: [destinationAccountId], references: [id])
   date                 DateTime             @default(now())
   description          String
-  amount               Decimal
+  amount               Decimal              @db.Decimal(18, 4)
   direction            String               // CREDIT, DEBIT
-  transactionType      String               // INCOME, EXPENSE, TRANSFER, etc.
+  transactionType      String               // INCOME, EXPENSE, TRANSFER, ASSET_PURCHASE, etc.
   categoryId           String?
   category             Category?            @relation(fields: [categoryId], references: [id])
   notes                String?
@@ -263,7 +277,7 @@ model TransactionAllocation {
   transactionId  String
   transaction    Transaction    @relation(fields: [transactionId], references: [id], onDelete: Cascade)
   allocationType String         // EXPENSE, INCOME, ASSET_INCREASE, ASSET_DECREASE, etc.
-  amount         Decimal
+  amount         Decimal        @db.Decimal(18, 4)
   categoryId     String?
   category       Category?      @relation(fields: [categoryId], references: [id])
   assetId        String?
@@ -281,8 +295,8 @@ model AccountBalanceSnapshot {
   accountId         String
   account           Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
   date              DateTime @default(now())
-  calculatedBalance Decimal
-  confirmedBalance  Decimal?
+  calculatedBalance Decimal  @db.Decimal(18, 4)
+  confirmedBalance  Decimal? @db.Decimal(18, 4)
   createdAt         DateTime @default(now())
 
   @@unique([accountId, date])
@@ -293,12 +307,12 @@ model NetWorthSnapshot {
   userId           String
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   date             DateTime @default(now())
-  liquidAssets     Decimal  // Contas correntes + caixa
-  investmentAssets Decimal  // Ativos de investimento
-  physicalAssets   Decimal  // Imóveis, veículos, etc.
-  totalAssets      Decimal  // Soma dos ativos
-  totalLiabilities Decimal  // Soma dos passivos
-  netWorth         Decimal  // totalAssets - totalLiabilities
-  liquidNetWorth   Decimal? // Ativos líquidos + investimentos - dívidas CP
+  liquidAssets     Decimal  @db.Decimal(18, 4) // Contas correntes + caixa
+  investmentAssets Decimal  @db.Decimal(18, 4) // Ativos de investimento
+  physicalAssets   Decimal  @db.Decimal(18, 4) // Imóveis, veículos, etc.
+  totalAssets      Decimal  @db.Decimal(18, 4) // Soma dos ativos
+  totalLiabilities Decimal  @db.Decimal(18, 4) // Soma dos passivos
+  netWorth         Decimal  @db.Decimal(18, 4) // totalAssets - totalLiabilities
+  liquidNetWorth   Decimal? @db.Decimal(18, 4) // Ativos líquidos + investimentos - dívidas CP
   createdAt        DateTime @default(now())
 }

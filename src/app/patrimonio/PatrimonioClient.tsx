@@ -2,67 +2,93 @@
 
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
-import { Building, Plus, Check, X } from "lucide-react";
-import { createAsset } from "@/lib/actions/db-actions";
+import { createAssetWithEntryMethod } from "@/lib/actions/db-actions";
+import { CategorySelector } from "@/components/categories/CategorySelector";
+import {
+  Building,
+  Plus,
+  Car,
+  Laptop,
+  Briefcase,
+  X,
+  Building2,
+} from "lucide-react";
 
-interface AssetItem {
+interface AssetData {
   id: string;
   name: string;
   category: string;
-  categoryLabel: string;
-  acqValue: number;
+  entryMethod?: string;
+  acquisitionValue: number;
   currentValue: number;
-  inNetWorth: boolean;
+  considerInNetWorth: boolean;
 }
 
 interface PatrimonioClientProps {
-  initialAssets: AssetItem[];
+  initialAssets: AssetData[];
+  accounts: { id: string; name: string }[];
+  categories: { id: string; name: string; subcategories: { id: string; name: string }[] }[];
 }
 
-const CATEGORIES_LIST = [
-  { value: "REAL_ESTATE", label: "Imóvel" },
-  { value: "VEHICLE", label: "Veículo" },
-  { value: "EQUIPMENT", label: "Equipamento / Eletrônico" },
-  { value: "CORPORATE_SHARE", label: "Participação societária" },
-  { value: "OTHER", label: "Outro bem" },
-];
-
-export function PatrimonioClient({ initialAssets }: PatrimonioClientProps) {
-  const [assets, setAssets] = useState<AssetItem[]>(initialAssets);
-  const [isAddOpen, setIsAddOpen] = useState(false);
-
-  // Form states
-  const [name, setName] = useState("");
-  const [category, setCategory] = useState("REAL_ESTATE");
-  const [acqValueStr, setAcqValueStr] = useState("");
-  const [currentValueStr, setCurrentValueStr] = useState("");
+export function PatrimonioClient({ initialAssets, accounts, categories }: PatrimonioClientProps) {
+  const [assets] = useState<AssetData[]>(initialAssets);
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-  const totalAssetsValue = assets.reduce((acc, a) => acc + a.currentValue, 0);
+  // Progressive Disclosure Form States
+  const [entryMethod, setEntryMethod] = useState<
+    "INITIAL_POSITION" | "PURCHASE_CASH" | "PURCHASE_FINANCED" | "DONATION_INHERITANCE" | "OTHER"
+  >("INITIAL_POSITION");
 
-  const handleCreate = async () => {
-    if (!name || !currentValueStr) return;
+  const [assetName, setAssetName] = useState("");
+  const [selectedCategoryId, setSelectedCategoryId] = useState("");
+  const [currentValueStr, setCurrentValueStr] = useState("");
+  
+  // Para compra à vista ou entrada financiada
+  const [sourceAccountId, setSourceAccountId] = useState(accounts[0]?.id || "");
+  const [downPaymentStr, setDownPaymentStr] = useState("0");
+  
+  // Para compra financiada
+  const [financedAmountStr, setFinancedAmountStr] = useState("0");
+  const [institutionName, setInstitutionName] = useState("");
+  const [notes, setNotes] = useState("");
+
+  const totalPhysicalAssets = assets
+    .filter((a) => a.considerInNetWorth)
+    .reduce((acc, a) => acc + a.currentValue, 0);
+
+  const handleSaveAsset = async () => {
+    if (!assetName.trim() || !currentValueStr) {
+      setErrorMsg("Por favor, preencha o nome e o valor do bem.");
+      return;
+    }
+
     setLoading(true);
+    setErrorMsg(null);
 
     try {
-      const acq = parseFloat(acqValueStr) || parseFloat(currentValueStr);
-      const curr = parseFloat(currentValueStr);
+      const val = parseFloat(currentValueStr) || 0;
+      const downPayment = parseFloat(downPaymentStr) || 0;
+      const financed = parseFloat(financedAmountStr) || 0;
 
-      await createAsset({
-        name,
-        category: category as any,
-        acquisitionValue: acq,
-        currentValue: curr,
-        considerInNetWorth: true,
+      await createAssetWithEntryMethod({
+        name: assetName.trim(),
+        category: selectedCategoryId || "OTHER",
+        entryMethod,
+        currentValue: val,
+        sourceAccountId: (entryMethod === "PURCHASE_CASH" || (entryMethod === "PURCHASE_FINANCED" && downPayment > 0)) ? sourceAccountId : undefined,
+        downPaymentAmount: downPayment,
+        financedAmount: financed,
+        institutionName,
+        notes,
       });
 
-      setIsAddOpen(false);
-      setName("");
-      setAcqValueStr("");
-      setCurrentValueStr("");
+      setIsModalOpen(false);
       window.location.reload();
-    } catch (err) {
-      console.error("Erro ao criar ativo:", err);
+    } catch (err: any) {
+      console.error("Erro ao cadastrar bem:", err);
+      setErrorMsg(err.message || "Erro ao cadastrar o bem.");
     } finally {
       setLoading(false);
     }
@@ -72,160 +98,285 @@ export function PatrimonioClient({ initialAssets }: PatrimonioClientProps) {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Ativos & Bens Patrimoniais</h1>
-          <p className="text-xs text-muted-foreground">Imóveis, veículos, equipamentos, participações e outros bens</p>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Bens Patrimoniais</h1>
+          <p className="text-xs text-muted-foreground">Imóveis, veículos, equipamentos e participações patrimoniais</p>
         </div>
 
         <button
-          onClick={() => setIsAddOpen(true)}
-          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20 transition-all self-start sm:self-auto"
+          onClick={() => {
+            setErrorMsg(null);
+            setIsModalOpen(true);
+          }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-white text-xs font-bold shadow-lg shadow-emerald-500/20 transition-all self-start sm:self-auto"
         >
           <Plus className="w-4 h-4" />
-          <span>Cadastrar Ativo / Bem</span>
+          <span>+ Cadastrar Bem</span>
         </button>
       </div>
 
-      {/* Resumo de Ativos */}
+      {/* Card de Resumo */}
       <div className="glass-card p-6 rounded-2xl flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="flex items-center gap-4">
           <div className="p-3.5 rounded-2xl bg-purple-500/20 text-purple-400">
             <Building className="w-7 h-7" />
           </div>
           <div>
-            <p className="text-xs text-muted-foreground font-medium">Valor Total dos Ativos e Bens</p>
-            <h2 className="text-3xl font-black text-white">{formatCurrencyBRL(totalAssetsValue)}</h2>
+            <p className="text-xs text-muted-foreground font-medium">Total em Bens Patrimoniais</p>
+            <h2 className="text-3xl font-black text-white">{formatCurrencyBRL(totalPhysicalAssets)}</h2>
           </div>
         </div>
       </div>
 
-      {/* Se não houver ativos: State Vazio */}
+      {/* Grid de Ativos */}
       {assets.length === 0 ? (
-        <div className="glass-card p-8 rounded-2xl text-center space-y-4 max-w-lg mx-auto">
-          <Building className="w-12 h-12 text-muted-foreground mx-auto" />
-          <h3 className="font-bold text-white text-base">Você ainda não cadastrou nenhum bem ou ativo</h3>
+        <div className="glass-card p-8 rounded-2xl text-center space-y-3">
+          <p className="font-bold text-white text-base">Nenhum bem patrimonial cadastrado</p>
           <p className="text-xs text-muted-foreground">
-            Cadastre seu imóvel, veículo, computador ou outros bens para acompanhar a evolução patrimonial real.
+            Clique em <strong className="text-emerald-400">+ Cadastrar Bem</strong> para incluir seus veículos, imóveis e equipamentos.
           </p>
-          <button
-            onClick={() => setIsAddOpen(true)}
-            className="px-5 py-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 text-white text-xs font-bold shadow-lg shadow-purple-600/20"
-          >
-            + Adicionar Bem
-          </button>
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {assets.map((asset) => {
-            const variation = asset.currentValue - asset.acqValue;
-            const isPositive = variation >= 0;
-            return (
-              <div key={asset.id} className="glass-card p-5 rounded-2xl space-y-3">
-                <div className="flex items-center justify-between">
+          {assets.map((asset) => (
+            <div key={asset.id} className="glass-card p-5 rounded-2xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="p-2.5 rounded-xl bg-purple-500/10 text-purple-400">
+                    {asset.category.includes("VEHICLE") ? (
+                      <Car className="w-5 h-5" />
+                    ) : asset.category.includes("EQUIPMENT") ? (
+                      <Laptop className="w-5 h-5" />
+                    ) : asset.category.includes("CORPORATE") ? (
+                      <Briefcase className="w-5 h-5" />
+                    ) : (
+                      <Building2 className="w-5 h-5" />
+                    )}
+                  </div>
                   <div>
                     <h3 className="font-bold text-white text-sm">{asset.name}</h3>
-                    <p className="text-xs text-muted-foreground">{asset.categoryLabel}</p>
-                  </div>
-                  <span className="px-2.5 py-1 rounded-full bg-purple-500/10 text-purple-300 text-[11px] font-semibold">
-                    {asset.categoryLabel}
-                  </span>
-                </div>
-
-                <div className="pt-3 border-t border-white/5 grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">Valor de Aquisição</p>
-                    <p className="text-sm font-semibold text-slate-300">{formatCurrencyBRL(asset.acqValue)}</p>
-                  </div>
-                  <div>
-                    <p className="text-[11px] text-muted-foreground">Valor Atual</p>
-                    <p className="text-base font-bold text-white">{formatCurrencyBRL(asset.currentValue)}</p>
+                    <p className="text-[11px] text-muted-foreground">
+                      {asset.entryMethod === "INITIAL_POSITION"
+                        ? "Posição Inicial Preexistente"
+                        : asset.entryMethod === "PURCHASE_CASH"
+                        ? "Comprado à vista"
+                        : asset.entryMethod === "PURCHASE_FINANCED"
+                        ? "Comprado financiado"
+                        : "Entrada por doação/outra"}
+                    </p>
                   </div>
                 </div>
 
-                <div className="pt-2 flex items-center justify-between text-xs">
-                  <span className={isPositive ? "text-emerald-400 font-semibold" : "text-rose-400 font-semibold"}>
-                    {isPositive ? "+" : ""}{formatCurrencyBRL(variation)} (Variação de Mercado)
-                  </span>
-                  <span className="flex items-center gap-1 text-[11px] text-emerald-400 font-medium">
-                    <Check className="w-3.5 h-3.5" /> Considerado no Patrimônio
-                  </span>
+                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold">
+                  Ativo
+                </span>
+              </div>
+
+              <div className="pt-3 border-t border-white/5 flex items-center justify-between">
+                <div>
+                  <p className="text-[11px] text-muted-foreground">Valor de Mercado Atual</p>
+                  <p className="text-base font-bold text-white">{formatCurrencyBRL(asset.currentValue)}</p>
                 </div>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       )}
 
-      {/* Modal Cadastrar Ativo */}
-      {isAddOpen && (
+      {/* Modal Cadastro de Bem com Progressive Disclosure */}
+      {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md glass-panel bg-slate-900 border border-white/10 rounded-3xl p-6 space-y-4">
+          <div className="w-full max-w-lg glass-panel bg-slate-900 border border-white/10 rounded-3xl p-6 space-y-5 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h2 className="text-base font-bold text-white">Cadastrar Ativo / Bem</h2>
-              <button onClick={() => setIsAddOpen(false)} className="p-1 rounded-xl text-muted-foreground hover:text-white">
+              <h2 className="text-base font-bold text-white">Cadastrar Bem Patrimonial</h2>
+              <button onClick={() => setIsModalOpen(false)} className="p-1 rounded-xl text-muted-foreground hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Nome do Bem</label>
-              <input
-                type="text"
-                placeholder="ex: Apartamento Jardins, Toyota Corolla"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none"
-              />
+            {errorMsg && (
+              <div className="p-3 rounded-xl bg-rose-500/20 border border-rose-500/30 text-rose-300 text-xs">
+                {errorMsg}
+              </div>
+            )}
+
+            {/* Passo 1: Pergunta inicial de Progressive Disclosure */}
+            <div className="space-y-2">
+              <label className="text-xs font-bold text-white block">Como este bem entrou no seu patrimônio?</label>
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEntryMethod("INITIAL_POSITION")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    entryMethod === "INITIAL_POSITION"
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  <p className="text-xs font-bold">1. Eu já possuía este bem</p>
+                  <p className="text-[10px] text-muted-foreground">Adicionar posição atual sem movimentar meu caixa.</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEntryMethod("PURCHASE_CASH")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    entryMethod === "PURCHASE_CASH"
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  <p className="text-xs font-bold">2. Comprei agora à vista</p>
+                  <p className="text-[10px] text-muted-foreground">Retirar o valor total de uma conta bancária.</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEntryMethod("PURCHASE_FINANCED")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    entryMethod === "PURCHASE_FINANCED"
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  <p className="text-xs font-bold">3. Comprei financiado</p>
+                  <p className="text-[10px] text-muted-foreground">Entrada da conta bancária + Saldo financiado em dívida.</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setEntryMethod("DONATION_INHERITANCE")}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    entryMethod === "DONATION_INHERITANCE"
+                      ? "bg-emerald-500/15 border-emerald-500/40 text-emerald-300"
+                      : "bg-white/5 border-white/10 text-slate-300 hover:bg-white/10"
+                  }`}
+                >
+                  <p className="text-xs font-bold">4. Recebi por doação / herança</p>
+                  <p className="text-[10px] text-muted-foreground">Entrada no patrimônio sem movimentação financeira.</p>
+                </button>
+              </div>
             </div>
 
-            <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Categoria do Bem</label>
-              <select
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-white focus:outline-none"
-              >
-                {CATEGORIES_LIST.map((c) => (
-                  <option key={c.value} value={c.value}>
-                    {c.label}
-                  </option>
-                ))}
-              </select>
+            {/* Passo 2: Campos condicionais com base na opção selecionada */}
+            <div className="space-y-3 pt-2 border-t border-white/10">
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">Descrição / Nome do Bem</label>
+                <input
+                  type="text"
+                  placeholder="ex: Toyota Corolla 2023, Apartamento Jardins, Jetta"
+                  value={assetName}
+                  onChange={(e) => setAssetName(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-sm text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">Categoria Patrimonial (Hierárquica)</label>
+                <CategorySelector
+                  categories={categories}
+                  selectedCategoryId={selectedCategoryId}
+                  onSelectCategory={(id) => setSelectedCategoryId(id)}
+                  placeholder="Buscar categoria (ex: Veículos, Imóveis)..."
+                />
+              </div>
+
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor Total de Mercado (R$)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="0,00"
+                  value={currentValueStr}
+                  onChange={(e) => setCurrentValueStr(e.target.value)}
+                  className="w-full px-4 py-2.5 rounded-xl bg-white/5 border border-white/10 text-base font-bold text-white focus:outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              {/* Seletor de Conta Bancária: EXIBIDO SOMENTE PARA COMPRA À VISTA OU ENTRADA FINANCIADA */}
+              {entryMethod === "PURCHASE_CASH" && (
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">De qual conta bancária saiu o valor?</label>
+                  <select
+                    value={sourceAccountId}
+                    onChange={(e) => setSourceAccountId(e.target.value)}
+                    className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-white focus:outline-none"
+                  >
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              {entryMethod === "PURCHASE_FINANCED" && (
+                <div className="space-y-3 p-3 rounded-2xl bg-white/5 border border-white/10">
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor da Entrada (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={downPaymentStr}
+                      onChange={(e) => setDownPaymentStr(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-white/10 text-xs text-white"
+                    />
+                  </div>
+
+                  {parseFloat(downPaymentStr) > 0 && (
+                    <div>
+                      <label className="text-xs text-muted-foreground font-semibold block mb-1">De qual conta saiu a entrada?</label>
+                      <select
+                        value={sourceAccountId}
+                        onChange={(e) => setSourceAccountId(e.target.value)}
+                        className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-white/10 text-xs text-white"
+                      >
+                        {accounts.map((acc) => (
+                          <option key={acc.id} value={acc.id}>
+                            {acc.name}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor Financiado (R$)</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      placeholder="0,00"
+                      value={financedAmountStr}
+                      onChange={(e) => setFinancedAmountStr(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-white/10 text-xs text-rose-400 font-bold"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-muted-foreground font-semibold block mb-1">Banco / Credor do Financiamento</label>
+                    <input
+                      type="text"
+                      placeholder="ex: Caixa Econômica, Santander"
+                      value={institutionName}
+                      onChange={(e) => setInstitutionName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl bg-slate-800 border border-white/10 text-xs text-white"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
 
-            <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor de Aquisição (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="0,00"
-                value={acqValueStr}
-                onChange={(e) => setAcqValueStr(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor Atual Estimado (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="0,00"
-                value={currentValueStr}
-                onChange={(e) => setCurrentValueStr(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white focus:outline-none"
-              />
-            </div>
-
-            <div className="flex justify-end gap-3 pt-3">
-              <button onClick={() => setIsAddOpen(false)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">
+            <div className="flex justify-end gap-3 pt-3 border-t border-white/10">
+              <button onClick={() => setIsModalOpen(false)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">
                 Cancelar
               </button>
               <button
-                onClick={handleCreate}
-                disabled={loading || !name || !currentValueStr}
-                className="px-5 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-xs font-bold text-white shadow-lg shadow-purple-600/20"
+                onClick={handleSaveAsset}
+                disabled={loading || !assetName.trim() || !currentValueStr}
+                className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-white shadow-lg shadow-emerald-500/20"
               >
-                {loading ? "Salvando..." : "Salvar Ativo"}
+                {loading ? "Salvando..." : "Salvar Bem"}
               </button>
             </div>
           </div>
