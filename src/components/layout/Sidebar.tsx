@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Receipt,
   Landmark,
+  TrendingUp,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -21,8 +22,9 @@ const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
   { name: "Resultado do Mês", href: "/resultado-mes", icon: Receipt },
   { name: "Meu Patrimônio", href: "/meu-patrimonio", icon: Landmark },
+  { name: "Carteira & Instituições", href: "/investimentos", icon: TrendingUp },
   { name: "Transações", href: "/transacoes", icon: ArrowRightLeft },
-  { name: "Patrimônio (Bens/Ativos)", href: "/patrimonio", icon: Building2 },
+  { name: "Patrimônio (Bens)", href: "/patrimonio", icon: Building2 },
   { name: "Dívidas (Passivos)", href: "/dividas", icon: TrendingDown },
   { name: "Contas & Liquidez", href: "/contas", icon: Wallet },
   { name: "Categorias", href: "/categorias", icon: Tags },

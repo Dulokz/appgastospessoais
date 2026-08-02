@@ -67,9 +67,6 @@ enum AssetCategory {
   VEHICLE          // Veículos
   EQUIPMENT        // Máquinas, Celular, Computador
   CORPORATE_SHARE  // Participação Societária
-  FINANCIAL_TICKER // Ações, FIIs, ETFs, Cripto
-  FIXED_INCOME     // CDB, Tesouro, LCI/LCA
-  FUNDS            // Fundos de Investimento
   OTHER
 }
 
@@ -94,6 +91,16 @@ enum InstrumentType {
   OTHER
 }
 
+enum InvestmentEventType {
+  CONTRIBUTION         // Aporte em Posição
+  WITHDRAWAL           // Resgate de Posição
+  INCOME_RECEIVED      // Rendimento Recebido em Dinheiro
+  DIVIDEND             // Dividendos Recebidos em Dinheiro
+  JCP                  // Juros sobre Capital Próprio Recebidos
+  APPRECIATION         // Valorização Não Realizada (Flutuação de Mercado)
+  DEPRECIATION         // Desvalorização Não Realizada (Flutuação de Mercado)
+}
+
 model User {
   id        String    @id @default(uuid())
   name      String
@@ -105,6 +112,7 @@ model User {
   accounts                Account[]
   assets                  Asset[]
   investmentPositions     InvestmentPosition[]
+  investmentEvents        InvestmentEvent[]
   liabilities             Liability[]
   categories              Category[]
   transactions            Transaction[]
@@ -154,6 +162,7 @@ model Account {
   destinationTransfers   Transaction[]        @relation("TransferDestinationAccount")
   balanceSnapshots       AccountBalanceSnapshot[]
   investmentPositions    InvestmentPosition[]
+  investmentEvents       InvestmentEvent[]
 }
 
 model Instrument {
@@ -193,6 +202,41 @@ model InvestmentPosition {
   createdAt        DateTime    @default(now())
   updatedAt        DateTime    @updatedAt
   deletedAt        DateTime?
+
+  events           InvestmentEvent[]
+  snapshots        InvestmentPositionSnapshot[]
+}
+
+model InvestmentEvent {
+  id                   String              @id @default(uuid())
+  userId               String
+  user                 User                @relation(fields: [userId], references: [id], onDelete: Cascade)
+  investmentPositionId String
+  investmentPosition   InvestmentPosition  @relation(fields: [investmentPositionId], references: [id], onDelete: Cascade)
+  accountId            String?             // Conta que recebeu o dinheiro (para dividendos/jcp/rendimentos)
+  account              Account?            @relation(fields: [accountId], references: [id])
+  type                 InvestmentEventType
+  date                 DateTime            @default(now())
+  amount               Decimal             @db.Decimal(18, 4)
+  quantity             Decimal?            @db.Decimal(18, 6)
+  unitPrice            Decimal?            @db.Decimal(18, 4)
+  notes                String?
+  source               FinancialDataSource @default(MANUAL)
+  externalId           String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+}
+
+model InvestmentPositionSnapshot {
+  id                   String             @id @default(uuid())
+  investmentPositionId String
+  investmentPosition   InvestmentPosition @relation(fields: [investmentPositionId], references: [id], onDelete: Cascade)
+  date                 DateTime           @default(now())
+  quantity             Decimal            @db.Decimal(18, 6)
+  unitPrice            Decimal?           @db.Decimal(18, 4)
+  currentValue         Decimal            @db.Decimal(18, 4)
+  source               String             @default("MANUAL")
+  createdAt            DateTime           @default(now())
 }
 
 model Asset {

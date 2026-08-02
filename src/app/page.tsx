@@ -21,6 +21,10 @@ export const dynamic = "force-dynamic";
 
 async function getDashboardData() {
   try {
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
     const user = await db.user.findFirst({
       include: {
         accounts: { where: { active: true } },
@@ -30,22 +34,39 @@ async function getDashboardData() {
         netWorthSnapshots: {
           orderBy: { date: "asc" },
         },
-        transactions: {
-          orderBy: { date: "desc" },
-          take: 10,
-          include: {
-            account: true,
-            destinationAccount: true,
-            category: true,
-            allocations: {
-              include: { category: true },
-            },
-          },
-        },
       },
     });
 
     if (!user) return null;
+
+    // 1. Consulta independente para TODAS as transações do mês atual (Sem limite)
+    const currentMonthTransactions = await db.transaction.findMany({
+      where: {
+        userId: user.id,
+        date: {
+          gte: startOfMonth,
+          lt: startOfNextMonth,
+        },
+      },
+      include: {
+        allocations: true,
+      },
+    });
+
+    // 2. Consulta independente para o Feed de Últimas Movimentações (Limitado a 10)
+    const recentTransactions = await db.transaction.findMany({
+      where: { userId: user.id },
+      orderBy: { date: "desc" },
+      take: 10,
+      include: {
+        account: true,
+        destinationAccount: true,
+        category: true,
+        allocations: {
+          include: { category: true },
+        },
+      },
+    });
 
     const accounts: AccountData[] = user.accounts.map((a) => ({
       id: a.id,
@@ -63,7 +84,6 @@ async function getDashboardData() {
       active: a.active,
     }));
 
-    // Adicionar Posições de Investimento aos Ativos de Investimento
     const investmentPositionTotal = user.investmentPositions.reduce(
       (acc, pos) => acc + pos.currentValue.toNumber(),
       0
@@ -76,8 +96,6 @@ async function getDashboardData() {
     }));
 
     const summary = NetWorthService.calculateSummary(accounts, assets, liabilities);
-
-    // Somar posições financeiras de investimento ao total de investimentos
     summary.investmentAssets = summary.investmentAssets.add(investmentPositionTotal);
     summary.totalAssets = summary.liquidAssets.add(summary.investmentAssets).add(summary.physicalAssets);
     summary.netWorth = summary.totalAssets.sub(summary.totalLiabilities);
@@ -89,18 +107,21 @@ async function getDashboardData() {
       totalLiabilities: s.totalLiabilities.toNumber(),
     }));
 
-    // Receitas e Despesas do mês atual calculadas das transações reais
+    // Cálculos estritos de Receitas e Despesas sobre TODAS as transações do mês vigente
     let currentMonthIncome = 0;
     let currentMonthExpenses = 0;
 
-    for (const tx of user.transactions) {
+    for (const tx of currentMonthTransactions) {
       if (tx.transactionType === "INCOME") {
         currentMonthIncome += tx.amount.toNumber();
       } else if (tx.transactionType === "EXPENSE" || tx.transactionType === "LIABILITY_PAYMENT") {
-        // Se houver allocations desmembradas, considera apenas a parte de despesa/juros/tarifas
         if (tx.allocations && tx.allocations.length > 0) {
           for (const alloc of tx.allocations) {
-            if (alloc.allocationType === "EXPENSE" || alloc.allocationType === "INTEREST" || alloc.allocationType === "FEE") {
+            if (
+              alloc.allocationType === "EXPENSE" ||
+              alloc.allocationType === "INTEREST" ||
+              alloc.allocationType === "FEE"
+            ) {
               currentMonthExpenses += alloc.amount.toNumber();
             }
           }
@@ -117,7 +138,7 @@ async function getDashboardData() {
       accounts: user.accounts,
       assets: user.assets,
       liabilities: user.liabilities,
-      recentTransactions: user.transactions,
+      recentTransactions,
       currentMonthIncome,
       currentMonthExpenses,
       currentMonthResult: currentMonthIncome - currentMonthExpenses,
@@ -238,11 +259,11 @@ export default async function DashboardPage() {
         </Link>
       </div>
 
-      {/* Bloco Este Mês */}
+      {/* Bloco Este Mês (Consulta Independente do Mês Vigente) */}
       <div className="glass-card p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
         <div>
-          <h3 className="font-bold text-white text-base">Este Mês (Movimentações Reais)</h3>
-          <p className="text-xs text-muted-foreground">Resumo de receitas operacionais e despesas de consumo</p>
+          <h3 className="font-bold text-white text-base">Este Mês (Consolidado)</h3>
+          <p className="text-xs text-muted-foreground">Cálculo exato sobre TODAS as movimentações do mês atual</p>
         </div>
 
         <div className="flex items-center gap-3 w-full sm:w-auto">
@@ -273,7 +294,7 @@ export default async function DashboardPage() {
         </div>
       )}
 
-      {/* Feed de Transações Recentes */}
+      {/* Feed de Transações Recentes (Feed Visual Independente) */}
       {data?.recentTransactions && data.recentTransactions.length > 0 && (
         <div className="glass-card p-6 rounded-2xl space-y-4">
           <div className="flex items-center justify-between">
