@@ -9,6 +9,7 @@ import {
   ShoppingBag,
   Building,
 } from "lucide-react";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { createQuickTransaction } from "@/lib/actions/db-actions";
 
 interface QuickRegisterModalProps {
@@ -194,14 +195,10 @@ export function QuickRegisterModal({
             {/* Valor */}
             <div>
               <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor (R$)</label>
-              <input
-                ref={amountInputRef}
-                type="number"
-                step="0.01"
-                placeholder="0,00"
+              <CurrencyInput
                 value={amount}
-                onChange={(e) => setAmount(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-2xl font-bold text-white focus:outline-none focus:border-emerald-500"
+                onChangeValue={(_, rawStr) => setAmount(rawStr)}
+                className="text-2xl font-bold py-3"
               />
             </div>
 

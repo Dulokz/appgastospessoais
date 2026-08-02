@@ -15,14 +15,30 @@ enum AssetEntryMethod {
   OTHER
 }
 
+enum OnboardingStatus {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+}
+
+enum AssetAcquisitionMode {
+  FULL_OWNERSHIP
+  FINANCED
+  EQUITY_BUILDUP
+}
+
 model User {
-  id               String    @id @default(uuid())
-  name             String
-  email            String    @unique
-  controlStartDate DateTime? // Data-Base de início do controle financeiro
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime?
+  id                    String            @id @default(uuid())
+  name                  String
+  email                 String            @unique
+  controlStartDate      DateTime?         // Data-Base de início do controle financeiro
+  onboardingStatus      OnboardingStatus  @default(NOT_STARTED)
+  onboardingStep        Int               @default(1)
+  onboardingCompletedAt DateTime?
+  createdAt             DateTime          @default(now())
+  updatedAt             DateTime          @updatedAt
+  deletedAt             DateTime?
 
   accounts                Account[]
   assets                  Asset[]
@@ -160,17 +176,19 @@ model InvestmentPositionSnapshot {
 }
 
 model Asset {
-  id                   String            @id @default(uuid())
+  id                   String               @id @default(uuid())
   userId               String
-  user                 User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  name                 String            // ex: Apartamento Jardins, Toyota Corolla
-  category             String            // REAL_ESTATE, VEHICLE, EQUIPMENT, CORPORATE_SHARE, OTHER
-  entryMethod          AssetEntryMethod  @default(INITIAL_POSITION) // ÚNICA FONTE DE VERDADE PARA TIPO DE ENTRADA
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name                 String               // ex: Apartamento Jardins, Toyota Corolla
+  category             String               // REAL_ESTATE, VEHICLE, EQUIPMENT, CORPORATE_SHARE, OTHER
+  entryMethod          AssetEntryMethod     @default(INITIAL_POSITION) // ÚNICA FONTE DE VERDADE PARA TIPO DE ENTRADA
+  acquisitionMode      AssetAcquisitionMode @default(FULL_OWNERSHIP)
   description          String?
   acquisitionDate      DateTime?
-  acquisitionValue     Decimal           @db.Decimal(18, 4)
-  currentValue         Decimal           @db.Decimal(18, 4)
-  lastValuationDate    DateTime          @default(now())
+  acquisitionValue     Decimal              @db.Decimal(18, 4)
+  paidEquityValue      Decimal?             @db.Decimal(18, 4) // Valor integralizado/pago até o momento (para EQUITY_BUILDUP)
+  currentValue         Decimal              @db.Decimal(18, 4) // Valor de mercado estimado atual do bem
+  lastValuationDate    DateTime             @default(now())
   notes                String?
   active               Boolean           @default(true)
   considerInNetWorth   Boolean           @default(true)

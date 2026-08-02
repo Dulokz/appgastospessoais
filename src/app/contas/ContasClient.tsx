@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
-import { Wallet, Plus, Building2, Scale, X, Check } from "lucide-react";
+import { Wallet, Plus, Building2, Scale, Trash2, X, Check } from "lucide-react";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { ReconcileModal } from "@/components/accounts/ReconcileModal";
 import { createAccount, archiveAccount } from "@/lib/actions/db-actions";
 
@@ -252,13 +253,9 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
 
             <div>
               <label className="text-xs text-muted-foreground font-semibold block mb-1">Saldo Inicial (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder="0,00"
+              <CurrencyInput
                 value={initialBalanceStr}
-                onChange={(e) => setInitialBalanceStr(e.target.value)}
-                className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-sm font-bold text-white focus:outline-none"
+                onChangeValue={(_, rawStr) => setInitialBalanceStr(rawStr)}
               />
             </div>
 

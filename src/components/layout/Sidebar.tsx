@@ -15,11 +15,13 @@ import {
   Receipt,
   Landmark,
   TrendingUp,
+  Rocket,
 } from "lucide-react";
 import { clsx } from "clsx";
 
 const navItems = [
   { name: "Dashboard", href: "/", icon: LayoutDashboard },
+  { name: "Onboarding (Inicialização)", href: "/onboarding", icon: Rocket },
   { name: "Resultado do Mês", href: "/resultado-mes", icon: Receipt },
   { name: "Meu Patrimônio", href: "/meu-patrimonio", icon: Landmark },
   { name: "Carteira & Instituições", href: "/investimentos", icon: TrendingUp },

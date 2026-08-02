@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { X, CheckCircle2, AlertTriangle, Scale } from "lucide-react";
 import { formatCurrencyBRL } from "@/lib/decimal";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 
 interface ReconcileModalProps {
   isOpen: boolean;
@@ -65,14 +66,10 @@ export function ReconcileModal({
           <label className="text-xs text-muted-foreground font-semibold block mb-1">
             Saldo informado pelo Banco (R$)
           </label>
-          <input
-            type="number"
-            step="0.01"
-            placeholder={calculated.toString()}
+          <CurrencyInput
             value={reportedStr}
-            onChange={(e) => setReportedStr(e.target.value)}
-            className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-lg font-bold text-white focus:outline-none focus:border-emerald-500"
-            autoFocus
+            onChangeValue={(_, rawStr) => setReportedStr(rawStr)}
+            className="text-lg font-bold py-3"
           />
         </div>
 

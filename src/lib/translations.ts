@@ -12,6 +12,8 @@ export const ASSET_CATEGORY_LABELS: Record<string, string> = {
   VEHICLE: "Veículo",
   EQUIPMENT: "Equipamento / Eletrônico",
   CORPORATE_SHARE: "Participação societária",
+  COOPERATIVE_CAPITAL: "Cota Capital (Sicoob, Sicredi, etc.)",
+  INTANGIBLE: "Intangível / Direitos / Patentes",
   FINANCIAL_TICKER: "Ativo negociado",
   FIXED_INCOME: "Renda fixa",
   FUNDS: "Fundo de investimento",

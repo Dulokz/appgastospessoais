@@ -4,134 +4,113 @@ import { db } from "@/lib/db";
 import { getDefaultUserId } from "@/lib/auth-user";
 import { revalidatePath } from "next/cache";
 
+import { FinancialCommandService } from "@/lib/services/financial-command.service";
+
 // ----------------------------------------------------
-// ONBOARDING FINANCEIRO PATRIMONIAL ATÔMICO
+// ONBOARDING FINANCEIRO PATRIMONIAL INCREMENTAL
 // ----------------------------------------------------
-export async function getUserOnboardingStatus() {
+export async function getOnboardingState() {
   const userId = await getDefaultUserId();
   const user = await db.user.findUnique({
     where: { id: userId },
-    select: { id: true, controlStartDate: true },
+    select: {
+      id: true,
+      controlStartDate: true,
+      onboardingStatus: true,
+      onboardingStep: true,
+      onboardingCompletedAt: true,
+    },
+  });
+
+  const existingAccounts = await db.account.findMany({
+    where: { userId, active: true },
+    include: { financialInstitution: true },
+  });
+
+  const existingInvestments = await db.investmentPosition.findMany({
+    where: { userId, active: true },
+    include: { instrument: true, account: true },
+  });
+
+  const existingAssets = await db.asset.findMany({
+    where: { userId, active: true },
+  });
+
+  const existingLiabilities = await db.liability.findMany({
+    where: { userId, active: true },
   });
 
   return {
-    isCompleted: !!user?.controlStartDate,
-    controlStartDate: user?.controlStartDate,
+    status: user?.onboardingStatus || "NOT_STARTED",
+    step: user?.onboardingStep || 1,
+    controlStartDate: user?.controlStartDate ? user.controlStartDate.toISOString().split("T")[0] : null,
+    isCompleted: user?.onboardingStatus === "COMPLETED" || !!user?.onboardingCompletedAt,
+    accounts: existingAccounts,
+    investments: existingInvestments,
+    assets: existingAssets,
+    liabilities: existingLiabilities,
   };
 }
 
-export async function saveOnboardingInitialPosition(data: {
-  controlStartDate: string;
-  accounts: { name: string; type: string; institutionName?: string; initialBalance: number }[];
-  investments: { accountIndex: number; instrumentName: string; instrumentType: string; currentValue: number }[];
-  assets: { name: string; category: string; currentValue: number; notes?: string }[];
-  liabilities: { name: string; type: string; institution?: string; currentBalance: number }[];
-}) {
+export async function updateOnboardingStep(step: number, controlStartDateStr?: string) {
   const userId = await getDefaultUserId();
-  const startDate = new Date(data.controlStartDate);
+  const data: any = { onboardingStep: step, onboardingStatus: "IN_PROGRESS" };
+
+  if (controlStartDateStr) {
+    data.controlStartDate = new Date(controlStartDateStr);
+  }
+
+  await db.user.update({
+    where: { id: userId },
+    data,
+  });
+
+  revalidatePath("/onboarding");
+}
+
+export async function skipOnboarding() {
+  const userId = await getDefaultUserId();
+  await db.user.update({
+    where: { id: userId },
+    data: {
+      onboardingStatus: "SKIPPED",
+      onboardingCompletedAt: new Date(),
+      controlStartDate: new Date(),
+    },
+  });
+
+  revalidatePath("/");
+  revalidatePath("/onboarding");
+}
+
+export async function completeOnboarding(controlStartDateStr?: string) {
+  const userId = await getDefaultUserId();
 
   return db.$transaction(async (tx) => {
-    await tx.user.update({
+    const user = await tx.user.findUnique({
       where: { id: userId },
-      data: { controlStartDate: startDate },
     });
 
-    const createdAccounts: any[] = [];
-    for (const acc of data.accounts) {
-      let institutionId: string | undefined;
-      if (acc.institutionName) {
-        let inst = await tx.financialInstitution.findFirst({
-          where: { userId, name: acc.institutionName },
-        });
-        if (!inst) {
-          inst = await tx.financialInstitution.create({
-            data: { userId, name: acc.institutionName },
-          });
-        }
-        institutionId = inst.id;
-      }
+    const startDate = controlStartDateStr ? new Date(controlStartDateStr) : user?.controlStartDate || new Date();
 
-      const newAcc = await tx.account.create({
-        data: {
-          userId,
-          financialInstitutionId: institutionId,
-          name: acc.name,
-          type: acc.type,
-          initialBalance: acc.initialBalance,
-          calculatedBalance: acc.initialBalance,
-          confirmedBalance: acc.initialBalance,
-        },
-      });
-      createdAccounts.push(newAcc);
-    }
+    await tx.user.update({
+      where: { id: userId },
+      data: {
+        controlStartDate: startDate,
+        onboardingStatus: "COMPLETED",
+        onboardingCompletedAt: new Date(),
+        onboardingStep: 6,
+      },
+    });
 
-    for (const inv of data.investments) {
-      const targetAccount = createdAccounts[inv.accountIndex] || createdAccounts[0];
-      if (!targetAccount) continue;
-
-      let instrument = await tx.instrument.findFirst({
-        where: { name: inv.instrumentName },
-      });
-
-      if (!instrument) {
-        instrument = await tx.instrument.create({
-          data: {
-            name: inv.instrumentName,
-            instrumentType: inv.instrumentType,
-          },
-        });
-      }
-
-      const position = await tx.investmentPosition.create({
-        data: {
-          userId,
-          accountId: targetAccount.id,
-          instrumentId: instrument.id,
-          acquisitionValue: inv.currentValue,
-          currentValue: inv.currentValue,
-        },
-      });
-
-      await tx.investmentEvent.create({
-        data: {
-          userId,
-          investmentPositionId: position.id,
-          type: "INITIAL_POSITION",
-          amount: inv.currentValue,
-          notes: "Posição inicial do onboarding",
-        },
-      });
-    }
-
-    for (const ast of data.assets) {
-      await tx.asset.create({
-        data: {
-          userId,
-          name: ast.name,
-          category: ast.category,
-          entryMethod: "INITIAL_POSITION",
-          acquisitionValue: ast.currentValue,
-          currentValue: ast.currentValue,
-          notes: ast.notes,
-        },
-      });
-    }
-
-    for (const liab of data.liabilities) {
-      await tx.liability.create({
-        data: {
-          userId,
-          name: liab.name,
-          type: liab.type,
-          institution: liab.institution,
-          originalValue: liab.currentBalance,
-          currentBalance: liab.currentBalance,
-          isInitialPosition: true,
-        },
-      });
+    // Seed default categories if none exist
+    const catCount = await tx.category.count({ where: { userId } });
+    if (catCount === 0) {
+      await seedDefaultCategories();
     }
 
     revalidatePath("/");
+    revalidatePath("/onboarding");
     revalidatePath("/contas");
     revalidatePath("/patrimonio");
     revalidatePath("/dividas");
