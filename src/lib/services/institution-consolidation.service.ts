@@ -14,8 +14,8 @@ export interface InvestmentPositionItemData {
   instrumentName: string;
   instrumentSymbol?: string | null;
   instrumentType: string;
-  quantity: Decimal | number | string;
-  averageCost: Decimal | number | string;
+  quantity?: Decimal | number | string | null;
+  averageCost?: Decimal | number | string | null;
   currentValue: Decimal | number | string;
   acquisitionValue: Decimal | number | string;
   accountId: string;

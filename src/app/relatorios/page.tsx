@@ -1,17 +1,111 @@
+import { db } from "@/lib/db";
+import { getDefaultUserId } from "@/lib/auth-user";
 import { formatCurrencyBRL, formatPercent } from "@/lib/decimal";
-import { PieChart, TrendingUp, HelpCircle, ArrowRight, ShieldCheck, Check } from "lucide-react";
+import { PieChart, TrendingUp, ShieldCheck } from "lucide-react";
 
-export default function RelatoriosPage() {
-  const initialNetWorth = 466000.0;
-  const income = 12500.0;
-  const expenses = 3130.5; // Consumo (680.5) + Juros (720) + Tarifas (80) + Outros
-  const netCashFlow = income - expenses; // 9369.5
-  const unrealizedGains = 4381.0; // Rentabilidade/Valorização de Imóveis e Ações
-  const finalNetWorth = initialNetWorth + netCashFlow + unrealizedGains; // 479750.5
-  const netWorthChange = finalNetWorth - initialNetWorth;
+export const dynamic = "force-dynamic";
 
-  // Wealth Building Rate: (Aportes Líquidos 5000 + Amortização 1650) / Receitas 12500 = 53.2%
-  const wealthBuildingRate = 53.2;
+async function getRelatorioData() {
+  try {
+    const userId = await getDefaultUserId();
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const startOfNextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+    const user = await db.user.findFirst({
+      where: { id: userId },
+      include: {
+        accounts: { where: { active: true } },
+        assets: { where: { active: true } },
+        investmentPositions: { where: { active: true } },
+        liabilities: { where: { active: true } },
+      },
+    });
+
+    const monthTransactions = await db.transaction.findMany({
+      where: {
+        userId,
+        date: { gte: startOfMonth, lt: startOfNextMonth },
+      },
+      include: { allocations: true },
+    });
+
+    let income = 0;
+    let expenses = 0;
+    let investmentContributions = 0;
+    let liabilityPrincipalAmortization = 0;
+
+    for (const tx of monthTransactions) {
+      if (tx.transactionType === "INCOME") {
+        income += tx.amount.toNumber();
+      } else if (tx.transactionType === "EXPENSE") {
+        expenses += tx.amount.toNumber();
+      } else if (tx.transactionType === "INVESTMENT_CONTRIBUTION") {
+        investmentContributions += tx.amount.toNumber();
+      } else if (tx.transactionType === "LIABILITY_PAYMENT") {
+        if (tx.allocations && tx.allocations.length > 0) {
+          for (const alloc of tx.allocations) {
+            if (alloc.allocationType === "LIABILITY_REDUCTION") {
+              liabilityPrincipalAmortization += alloc.amount.toNumber();
+            } else if (
+              alloc.allocationType === "EXPENSE" ||
+              alloc.allocationType === "INTEREST" ||
+              alloc.allocationType === "FEE"
+            ) {
+              expenses += alloc.amount.toNumber();
+            }
+          }
+        } else {
+          expenses += tx.amount.toNumber();
+        }
+      }
+    }
+
+    const totalLiquid = (user?.accounts || []).reduce((acc, a) => acc + a.calculatedBalance.toNumber(), 0);
+    const totalInvestments = (user?.investmentPositions || []).reduce((acc, p) => acc + p.currentValue.toNumber(), 0);
+    const totalPhysical = (user?.assets || []).reduce((acc, a) => acc + a.currentValue.toNumber(), 0);
+    const totalAssets = totalLiquid + totalInvestments + totalPhysical;
+    const totalLiabilities = (user?.liabilities || []).reduce((acc, l) => acc + l.currentBalance.toNumber(), 0);
+    const currentNetWorth = totalAssets - totalLiabilities;
+
+    // Wealth Building Rate = (Aportes em Investimento + Amortização de Passivos) / Receita Total
+    const wealthBuildingAmount = investmentContributions + liabilityPrincipalAmortization;
+    const wealthBuildingRate = income > 0 ? (wealthBuildingAmount / income) * 100 : 0;
+
+    const netCashFlow = income - expenses;
+    const initialNetWorth = currentNetWorth - netCashFlow;
+
+    return {
+      income,
+      expenses,
+      netCashFlow,
+      investmentContributions,
+      liabilityPrincipalAmortization,
+      wealthBuildingAmount,
+      wealthBuildingRate,
+      initialNetWorth,
+      currentNetWorth,
+      hasData: (user?.accounts.length || 0) > 0 || monthTransactions.length > 0,
+    };
+  } catch (error) {
+    console.error("Erro ao carregar relatório:", error);
+    return {
+      income: 0,
+      expenses: 0,
+      netCashFlow: 0,
+      investmentContributions: 0,
+      liabilityPrincipalAmortization: 0,
+      wealthBuildingAmount: 0,
+      wealthBuildingRate: 0,
+      initialNetWorth: 0,
+      currentNetWorth: 0,
+      hasData: false,
+    };
+  }
+}
+
+export default async function RelatoriosPage() {
+  const data = await getRelatorioData();
 
   return (
     <div className="space-y-6">
@@ -29,7 +123,7 @@ export default function RelatoriosPage() {
               Taxa de Construção Patrimonial (Wealth Building Rate)
             </span>
           </div>
-          <h2 className="text-4xl font-black text-white">{formatPercent(wealthBuildingRate)}</h2>
+          <h2 className="text-4xl font-black text-white">{formatPercent(data.wealthBuildingRate)}</h2>
           <p className="text-xs text-muted-foreground">
             Percentual da sua receita que efetivamente virou patrimônio (Aportes em investimentos + Amortização de principal de dívidas)
           </p>
@@ -38,15 +132,15 @@ export default function RelatoriosPage() {
         <div className="glass-panel p-4 rounded-xl text-xs space-y-1.5 w-full sm:w-auto">
           <div className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">Aportes em Investimento:</span>
-            <span className="font-bold text-emerald-400">{formatCurrencyBRL(5000)}</span>
+            <span className="font-bold text-emerald-400">{formatCurrencyBRL(data.investmentContributions)}</span>
           </div>
           <div className="flex items-center justify-between gap-4">
             <span className="text-muted-foreground">Amortização de Passivos:</span>
-            <span className="font-bold text-cyan-400">{formatCurrencyBRL(1650)}</span>
+            <span className="font-bold text-cyan-400">{formatCurrencyBRL(data.liabilityPrincipalAmortization)}</span>
           </div>
           <div className="flex items-center justify-between gap-4 border-t border-white/10 pt-1">
             <span className="text-muted-foreground">Receita Total no Mês:</span>
-            <span className="font-bold text-white">{formatCurrencyBRL(income)}</span>
+            <span className="font-bold text-white">{formatCurrencyBRL(data.income)}</span>
           </div>
         </div>
       </div>
@@ -55,47 +149,38 @@ export default function RelatoriosPage() {
       <div className="glass-card p-6 rounded-2xl space-y-6">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <PieChart className="w-5 h-5 text-cyan-400" />
-          <span>Conciliação Fechada do Período (Último Mês)</span>
+          <span>Conciliação Fechada do Período (Mês Vigente)</span>
         </h3>
 
         <div className="space-y-3">
           {/* Passo 1: Inicial */}
           <div className="flex items-center justify-between p-3.5 rounded-xl bg-white/5 border border-white/10">
-            <span className="text-sm font-semibold text-white">Patrimônio Líquido Inicial</span>
-            <span className="text-base font-bold text-white">{formatCurrencyBRL(initialNetWorth)}</span>
+            <span className="text-sm font-semibold text-white">Patrimônio Líquido Estimado Inicial</span>
+            <span className="text-base font-bold text-white">{formatCurrencyBRL(data.initialNetWorth)}</span>
           </div>
 
           {/* Fluxo de Caixa Líquido */}
           <div className="pl-4 space-y-2 border-l-2 border-emerald-500/40">
             <div className="flex items-center justify-between text-xs text-emerald-400">
               <span>(+) Receitas Operacionais Registradas</span>
-              <span className="font-bold">+{formatCurrencyBRL(income)}</span>
+              <span className="font-bold">+{formatCurrencyBRL(data.income)}</span>
             </div>
             <div className="flex items-center justify-between text-xs text-rose-400">
-              <span>(-) Despesas Operacionais Totais (Consumo + Juros + Tarifas)</span>
-              <span className="font-bold">-{formatCurrencyBRL(expenses)}</span>
+              <span>(-) Despesas Operacionais Totais</span>
+              <span className="font-bold">-{formatCurrencyBRL(data.expenses)}</span>
             </div>
             <div className="flex items-center justify-between text-xs text-slate-300 font-semibold pt-1 border-t border-white/5">
               <span>(=) Gerado pelo Fluxo de Caixa Líquido</span>
-              <span className="text-emerald-400">+{formatCurrencyBRL(netCashFlow)}</span>
-            </div>
-          </div>
-
-          {/* Variação de Mercado */}
-          <div className="pl-4 space-y-2 border-l-2 border-purple-500/40">
-            <div className="flex items-center justify-between text-xs text-purple-400">
-              <span>(+) Valorização de Ativos & Investimentos (Ganhos Não Realizados)</span>
-              <span className="font-bold">+{formatCurrencyBRL(unrealizedGains)}</span>
+              <span className="text-emerald-400">+{formatCurrencyBRL(data.netCashFlow)}</span>
             </div>
           </div>
 
           {/* Passo Final */}
           <div className="flex items-center justify-between p-4 rounded-xl bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 border border-emerald-500/30">
             <div>
-              <span className="text-sm font-bold text-white">Patrimônio Líquido Final</span>
-              <p className="text-xs text-emerald-400 font-medium">Variação Total: +{formatCurrencyBRL(netWorthChange)}</p>
+              <span className="text-sm font-bold text-white">Patrimônio Líquido Atual</span>
             </div>
-            <span className="text-2xl font-black text-white">{formatCurrencyBRL(finalNetWorth)}</span>
+            <span className="text-2xl font-black text-white">{formatCurrencyBRL(data.currentNetWorth)}</span>
           </div>
         </div>
       </div>

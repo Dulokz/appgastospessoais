@@ -12,9 +12,7 @@ import {
   ChevronDown,
   ChevronUp,
   PieChart,
-  DollarSign,
   TrendingUp,
-  Wallet,
   X,
   Edit2,
   Gift,
@@ -53,8 +51,8 @@ export function InvestimentosClient({
   initialEvents,
 }: InvestimentosClientProps) {
   const [accounts] = useState(initialAccounts);
-  const [positions, setPositions] = useState(initialPositions);
-  const [events, setEvents] = useState(initialEvents);
+  const [positions] = useState(initialPositions);
+  const [events] = useState(initialEvents);
 
   const [expandedInst, setExpandedInst] = useState<Record<string, boolean>>({});
 
@@ -63,42 +61,38 @@ export function InvestimentosClient({
   const [isUpdateValueOpen, setIsUpdateValueOpen] = useState<InvestmentPositionItemData | null>(null);
   const [isRecordEventOpen, setIsRecordEventOpen] = useState<InvestmentPositionItemData | null>(null);
 
-  // Add Position Form
+  // Add Position Form State
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
+  const [isInitialPosition, setIsInitialPosition] = useState(true); // Default = Já possuo este investimento
   const [instrumentName, setInstrumentName] = useState("");
   const [symbol, setSymbol] = useState("");
   const [instrumentType, setInstrumentType] = useState("STOCK");
   const [acquisitionValueStr, setAcquisitionValueStr] = useState("");
   const [currentValueStr, setCurrentValueStr] = useState("");
-  const [quantityStr, setQuantityStr] = useState("1");
+  const [quantityStr, setQuantityStr] = useState(""); // Opcional
   const [loading, setLoading] = useState(false);
 
-  // Update Value Form
+  // Update Value Form State
   const [newValueStr, setNewValueStr] = useState("");
   const [updateNotes, setUpdateNotes] = useState("");
 
-  // Record Event Form
+  // Record Event Form State
   const [eventType, setEventType] = useState<"DIVIDEND" | "JCP" | "INCOME_RECEIVED" | "CONTRIBUTION" | "WITHDRAWAL">("DIVIDEND");
   const [eventAmountStr, setEventAmountStr] = useState("");
+  const [realizedGainStr, setRealizedGainStr] = useState("");
   const [eventAccountTarget, setEventAccountTarget] = useState(accounts[0]?.id || "");
   const [eventNotes, setEventNotes] = useState("");
 
-  // Consolar Posições por Instituição
   const consolidatedInstitutions = InstitutionConsolidationService.consolidateByInstitution(accounts, positions);
-
-  // Consolidar por Classe de Ativo
   const totalLiquid = accounts.reduce((acc, a) => acc + Number(a.calculatedBalance), 0);
   const assetClasses = AssetClassService.consolidateByClass(positions, totalLiquid);
-
-  // Total de Investimentos acumulado
   const totalInvested = positions.reduce((acc, p) => acc + Number(p.currentValue), 0);
 
-  // Calculo de Rendimentos vs Ganhos Não Realizados dos Eventos
   let realizedIncomeSum = 0;
   let unrealizedGainsSum = 0;
 
   for (const e of events) {
-    if (e.type === "DIVIDEND" || e.type === "JCP" || e.type === "INCOME_RECEIVED") {
+    if (e.type === "DIVIDEND" || e.type === "JCP" || e.type === "INCOME_RECEIVED" || e.type === "REALIZED_GAIN") {
       realizedIncomeSum += e.amount;
     } else if (e.type === "APPRECIATION") {
       unrealizedGainsSum += e.amount;
@@ -118,7 +112,7 @@ export function InvestimentosClient({
     try {
       const acq = parseFloat(acquisitionValueStr) || parseFloat(currentValueStr);
       const curr = parseFloat(currentValueStr);
-      const qty = parseFloat(quantityStr) || 1;
+      const qty = quantityStr ? parseFloat(quantityStr) : undefined;
 
       await createInvestmentPosition({
         accountId,
@@ -128,6 +122,7 @@ export function InvestimentosClient({
         quantity: qty,
         acquisitionValue: acq,
         currentValue: curr,
+        isInitialPosition,
       });
 
       setIsAddPositionOpen(false);
@@ -164,10 +159,14 @@ export function InvestimentosClient({
     setLoading(true);
 
     try {
+      const amt = parseFloat(eventAmountStr);
+      const realizedGain = realizedGainStr ? parseFloat(realizedGainStr) : undefined;
+
       await recordInvestmentEvent({
         positionId: isRecordEventOpen.id,
         eventType,
-        amount: parseFloat(eventAmountStr),
+        amount: amt,
+        realizedGain,
         accountId: eventAccountTarget,
         notes: eventNotes,
       });
@@ -198,7 +197,7 @@ export function InvestimentosClient({
         </button>
       </div>
 
-      {/* Seção 19: Resultado dos Investimentos */}
+      {/* Resultado dos Investimentos */}
       <div className="glass-card p-6 rounded-3xl space-y-4 border-emerald-500/30">
         <div className="flex items-center gap-2">
           <TrendingUp className="w-5 h-5 text-emerald-400" />
@@ -228,7 +227,7 @@ export function InvestimentosClient({
         </div>
       </div>
 
-      {/* Seção 5: Resumo por Classe de Ativo */}
+      {/* Resumo por Classe de Ativo */}
       <div className="glass-card p-6 rounded-2xl space-y-4">
         <h3 className="text-sm font-bold text-white flex items-center gap-2">
           <PieChart className="w-4 h-4 text-purple-400" />
@@ -246,7 +245,7 @@ export function InvestimentosClient({
         </div>
       </div>
 
-      {/* Seção 3 & 4: Cards Consolidados por Instituição (Expansíveis) */}
+      {/* Cards Consolidados por Instituição */}
       <div className="space-y-4">
         <h3 className="text-lg font-bold text-white flex items-center gap-2">
           <Building2 className="w-5 h-5 text-cyan-400" />
@@ -263,7 +262,6 @@ export function InvestimentosClient({
             const isExpanded = expandedInst[inst.institutionId];
             return (
               <div key={inst.institutionId} className="glass-card rounded-2xl overflow-hidden transition-all">
-                {/* Header Fechado */}
                 <div
                   onClick={() => toggleInst(inst.institutionId)}
                   className="p-5 flex items-center justify-between cursor-pointer hover:bg-white/5 transition-all"
@@ -292,10 +290,8 @@ export function InvestimentosClient({
                   </div>
                 </div>
 
-                {/* Conteúdo Expandido */}
                 {isExpanded && (
                   <div className="p-5 border-t border-white/10 bg-black/20 space-y-6">
-                    {/* Contas Líquidas */}
                     {inst.accounts.length > 0 && (
                       <div className="space-y-2">
                         <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider block">Dinheiro / Liquidez</span>
@@ -313,7 +309,6 @@ export function InvestimentosClient({
                       </div>
                     )}
 
-                    {/* Posições de Investimento */}
                     {inst.positions.length > 0 && (
                       <div className="space-y-3">
                         <span className="text-xs font-bold text-emerald-400 uppercase tracking-wider block">Investimentos & Produtos</span>
@@ -331,6 +326,7 @@ export function InvestimentosClient({
                                 </div>
                                 <p className="text-[11px] text-muted-foreground mt-0.5">
                                   Tipo: {INSTRUMENT_TYPE_LABELS[pos.instrumentType] || pos.instrumentType} • Aplicado: {formatCurrencyBRL(pos.acquisitionValue)}
+                                  {pos.quantity && ` • ${pos.quantity} cotas/unid.`}
                                 </p>
                               </div>
 
@@ -375,12 +371,44 @@ export function InvestimentosClient({
       {/* Modal + Adicionar Investimento */}
       {isAddPositionOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className="w-full max-w-md glass-panel bg-slate-900 border border-white/10 rounded-3xl p-6 space-y-4">
+          <div className="w-full max-w-md glass-panel bg-slate-900 border border-white/10 rounded-3xl p-6 space-y-4 max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
               <h2 className="text-base font-bold text-white">Cadastrar Posição de Investimento</h2>
               <button onClick={() => setIsAddPositionOpen(false)} className="p-1 rounded-xl text-muted-foreground hover:text-white">
                 <X className="w-5 h-5" />
               </button>
+            </div>
+
+            {/* FASE 3A.1: Escolha do Tipo de Cadastro */}
+            <div className="space-y-2">
+              <label className="text-xs text-muted-foreground font-semibold block">Como deseja cadastrar?</label>
+              <div className="grid grid-cols-1 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsInitialPosition(true)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    isInitialPosition
+                      ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
+                      : "bg-white/5 border-white/10 text-muted-foreground hover:text-white"
+                  }`}
+                >
+                  <p className="text-xs font-bold">Já possuo este investimento</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Adicionar posição atual sem movimentar meu caixa.</p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsInitialPosition(false)}
+                  className={`p-3 rounded-xl border text-left transition-all ${
+                    !isInitialPosition
+                      ? "bg-emerald-500/10 border-emerald-500/40 text-emerald-300"
+                      : "bg-white/5 border-white/10 text-muted-foreground hover:text-white"
+                  }`}
+                >
+                  <p className="text-xs font-bold">Estou fazendo um aporte agora</p>
+                  <p className="text-[10px] text-muted-foreground mt-0.5">Retirar o valor da conta e adicionar ao investimento.</p>
+                </button>
+              </div>
             </div>
 
             <div>
@@ -461,6 +489,18 @@ export function InvestimentosClient({
               </div>
             </div>
 
+            <div>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1">Quantidade / Cotas (opcional)</label>
+              <input
+                type="number"
+                step="0.000001"
+                placeholder="Deixar em branco para Fundos / CDB"
+                value={quantityStr}
+                onChange={(e) => setQuantityStr(e.target.value)}
+                className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-white focus:outline-none"
+              />
+            </div>
+
             <div className="flex justify-end gap-3 pt-3">
               <button onClick={() => setIsAddPositionOpen(false)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">
                 Cancelar
@@ -521,12 +561,12 @@ export function InvestimentosClient({
         </div>
       )}
 
-      {/* Modal Registrar Provento / Aporte */}
+      {/* Modal Registrar Provento / Aporte / Resgate */}
       {isRecordEventOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md glass-panel bg-slate-900 border border-white/10 rounded-3xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h2 className="text-base font-bold text-white">Registrar Provento ou Aporte</h2>
+              <h2 className="text-base font-bold text-white">Registrar Provento ou Movimentação</h2>
               <button onClick={() => setIsRecordEventOpen(null)} className="p-1 rounded-xl text-muted-foreground hover:text-white">
                 <X className="w-5 h-5" />
               </button>
@@ -542,13 +582,13 @@ export function InvestimentosClient({
                 <option value="DIVIDEND">Dividendo (Recebido em Dinheiro)</option>
                 <option value="JCP">JCP (Recebido em Dinheiro)</option>
                 <option value="INCOME_RECEIVED">Rendimento (Recebido em Dinheiro)</option>
-                <option value="CONTRIBUTION">Aporte na Posição (Adicionar Valor)</option>
-                <option value="WITHDRAWAL">Resgate da Posição (Retirar Valor)</option>
+                <option value="CONTRIBUTION">Aporte na Posição (Retirar do caixa)</option>
+                <option value="WITHDRAWAL">Resgate da Posição (Enviar para o caixa)</option>
               </select>
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor (R$)</label>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1">Valor Total (R$)</label>
               <input
                 type="number"
                 step="0.01"
@@ -559,6 +599,20 @@ export function InvestimentosClient({
                 autoFocus
               />
             </div>
+
+            {eventType === "WITHDRAWAL" && (
+              <div>
+                <label className="text-xs text-muted-foreground font-semibold block mb-1">Ganho Realizado (opcional)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="ex: 500,00 de lucro sobre o resgate"
+                  value={realizedGainStr}
+                  onChange={(e) => setRealizedGainStr(e.target.value)}
+                  className="w-full px-4 py-2 rounded-xl bg-white/5 border border-white/10 text-xs text-emerald-400 focus:outline-none"
+                />
+              </div>
+            )}
 
             <div className="flex justify-end gap-3 pt-3">
               <button onClick={() => setIsRecordEventOpen(null)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">

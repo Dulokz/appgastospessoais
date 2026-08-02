@@ -20,6 +20,74 @@ async function main() {
   // 2. Biblioteca Completa de Categorias Hierárquicas
   const categoriesData = [
     {
+      name: "Bens Imóveis",
+      icon: "Building",
+      subs: [
+        "Apartamento",
+        "Casa",
+        "Terreno / Lote",
+        "Imóvel Rural / Sítio / Fazenda",
+        "Sala Comercial",
+        "Galpão industrial",
+        "Vaga de Garagem / Box",
+      ],
+    },
+    {
+      name: "Bens Móveis",
+      icon: "Car",
+      subs: [
+        "Veículo (Carro)",
+        "Motocicleta",
+        "Embarcação / Aeronave",
+        "Máquinas e Equipamentos",
+        "Semoventes / Gado / Plantio",
+        "Móveis e Eletrodomésticos",
+        "Jóias, Relógios e Obras de Arte",
+      ],
+    },
+    {
+      name: "Intangíveis & Propriedades",
+      icon: "FileCheck",
+      subs: [
+        "Marcas e Patentes",
+        "Software / Direitos Autorais",
+        "Licenças e Concessões",
+        "Domínios e Ativos Digitais",
+      ],
+    },
+    {
+      name: "Participação Societária",
+      icon: "Briefcase",
+      subs: [
+        "Participação em Empresa LTDA",
+        "Ações de Cia Fechada",
+        "Holding Patrimonial",
+        "Sociedade em Conta de Participação (SCP)",
+      ],
+    },
+    {
+      name: "Cota Capital & Cooperativas",
+      icon: "Landmark",
+      subs: [
+        "Cota Capital em Cooperativa de Crédito",
+        "Cota em Cooperativa Agropecuária",
+        "Capital Social Integralizado",
+      ],
+    },
+    {
+      name: "Investimentos & Custódia",
+      icon: "TrendingUp",
+      subs: [
+        "Renda Fixa (CDB, LCI, LCA)",
+        "Tesouro Direto",
+        "Ações B3",
+        "FIIs (Fundos Imobiliários)",
+        "BDRs e Mercado Internacional",
+        "Fundos de Investimento",
+        "Criptoativos e Web3",
+      ],
+    },
+    {
       name: "Moradia",
       icon: "Home",
       subs: ["Aluguel", "Condomínio", "Energia elétrica", "Água", "Internet", "Manutenção", "Móveis"],
@@ -82,7 +150,7 @@ async function main() {
     {
       name: "Pets",
       icon: "Dog",
-      subs: ["Vetinária", "Ração", "Higiene pet"],
+      subs: ["Veterinária", "Ração", "Higiene pet"],
     },
     {
       name: "Doações",
