@@ -40,6 +40,7 @@ export default async function DividasPage() {
     id: l.id,
     name: l.name,
     institution: l.institution,
+    type: l.type,
     typeLabel: LIABILITY_TYPE_LABELS[l.type] || l.type,
     originalValue: l.originalValue.toNumber(),
     currentBalance: l.currentBalance.toNumber(),
