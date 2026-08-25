@@ -688,6 +688,11 @@ export async function seedDefaultCategories() {
 // ----------------------------------------------------
 // TRANSAÇÕES & QUICK REGISTER
 // ----------------------------------------------------
+function getCardInvoiceKey(date: Date, closingDay?: number | null) {
+  const reference = new Date(date);
+  if (reference.getDate() > (closingDay || 25)) reference.setMonth(reference.getMonth() + 1);
+  return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+}
 export async function getTransactions() {
   const userId = await getDefaultUserId();
   return db.transaction.findMany({
@@ -734,6 +739,7 @@ export async function createQuickTransaction(data: {
           transactionType: "EXPENSE",
           categoryId: data.categoryId,
           description: data.description,
+          cardInvoiceKey: sourceAcc.type === "CREDIT_CARD" ? getCardInvoiceKey(new Date(), sourceAcc.creditCardClosingDay) : null,
           allocations: {
             create: [
               {
