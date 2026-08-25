@@ -19,6 +19,8 @@ export default async function CartoesPage() {
         name: card.name,
         institution: card.financialInstitution?.name || "Instituição não informada",
         balance: card.calculatedBalance.toNumber(),
+        closingDay: card.creditCardClosingDay,
+        dueDay: card.creditCardDueDay,
       }))}
     />
   );
