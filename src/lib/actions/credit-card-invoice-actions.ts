@@ -51,3 +51,18 @@ export async function payCreditCardInvoice(input: {
   refresh();
   revalidatePath(`/cartoes/${input.cardId}`);
 }
+
+
+export async function updateCreditCardBillingCycle(input: { cardId: string; closingDay: number; dueDay: number }) {
+  const userId = await getDefaultUserId();
+  if (![input.closingDay, input.dueDay].every((day) => Number.isInteger(day) && day >= 1 && day <= 31)) {
+    throw new Error("Informe dias entre 1 e 31.");
+  }
+  const result = await db.account.updateMany({
+    where: { id: input.cardId, userId, active: true, type: "CREDIT_CARD" },
+    data: { creditCardClosingDay: input.closingDay, creditCardDueDay: input.dueDay },
+  });
+  if (!result.count) throw new Error("Cartão não encontrado.");
+  refresh();
+  revalidatePath(`/cartoes/${input.cardId}`);
+}
