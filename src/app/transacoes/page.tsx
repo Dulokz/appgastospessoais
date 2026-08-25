@@ -6,7 +6,7 @@ export const dynamic = "force-dynamic";
 
 export default async function TransacoesPage() {
   const userId = await getDefaultUserId();
-  const [transactions, categories] = await Promise.all([
+  const [transactions, categories, accounts] = await Promise.all([
     db.transaction.findMany({
       where: { userId, deletedAt: null },
       orderBy: { date: "desc" },
@@ -14,6 +14,7 @@ export default async function TransacoesPage() {
       include: { account: true, destinationAccount: true, category: true, allocations: { include: { category: true, asset: true, liability: true } } },
     }),
     db.category.findMany({ where: { userId, deletedAt: null }, include: { parent: true }, orderBy: { name: "asc" } }),
+    db.account.findMany({ where: { userId, active: true }, include: { financialInstitution: true }, orderBy: { name: "asc" } }),
   ]);
 
   return <TransactionsClient
@@ -24,5 +25,6 @@ export default async function TransacoesPage() {
       allocations: tx.allocations.map((a) => ({ id: a.id, allocationType: a.allocationType, amount: Number(a.amount), label: a.category?.name || a.asset?.name || a.liability?.name || a.allocationType })),
     }))}
     categories={categories.map((c) => ({ id: c.id, name: c.name, parentName: c.parent?.name }))}
+    accounts={accounts.map((a) => ({ id: a.id, name: a.name, type: a.type, institutionName: a.financialInstitution?.name || null }))}
   />;
 }
