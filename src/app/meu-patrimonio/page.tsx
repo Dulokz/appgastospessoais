@@ -1,7 +1,8 @@
 import { db } from "@/lib/db";
 import { getDefaultUserId } from "@/lib/auth-user";
 import { formatCurrencyBRL } from "@/lib/decimal";
-import { Wallet, TrendingUp, Building, TrendingDown, ShieldCheck } from "lucide-react";
+import { Wallet, TrendingUp, Building, TrendingDown, ShieldCheck, Pencil } from "lucide-react";
+import Link from "next/link";
 
 export const dynamic = "force-dynamic";
 
@@ -73,9 +74,14 @@ export default async function MeuPatrimonioPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-white tracking-tight">Meu Patrimônio</h1>
-        <p className="text-xs text-muted-foreground">Balanço Patrimonial Pessoal: Ativos, Dívidas e Patrimônio Líquido Real</p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold text-white tracking-tight">Meu Patrimônio</h1>
+          <p className="text-xs text-muted-foreground">Balanço Patrimonial Pessoal: Ativos, Dívidas e Patrimônio Líquido Real</p>
+        </div>
+        <Link href="/patrimonio" className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-purple-500/15 border border-purple-500/30 text-purple-200 text-xs font-bold">
+          <Pencil className="w-4 h-4" /> Gerenciar bens
+        </Link>
       </div>
 
       {/* Header do Balanço */}
