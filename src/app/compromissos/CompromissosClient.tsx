@@ -10,7 +10,7 @@ type Account = { id: string; name: string; type: string; institution: string };
 type Category = { id: string; label: string };
 type Commitment = { id: string; description: string; amount: number; dueDate: string; accountName: string; institution: string; categoryName?: string | null; sourceType: string; installmentNumber?: number | null; totalInstallments?: number | null };
 
-export function CompromissosClient({ accounts, categories, initialCommitments }: { accounts: Account[]; categories: Category[]; initialCommitments: Commitment[] }) {
+export function CompromissosClient({ accounts, categories, initialCommitments, loadError }: { accounts: Account[]; categories: Category[]; initialCommitments: Commitment[]; loadError?: string | null }) {
   const [commitments, setCommitments] = useState(initialCommitments);
   const [mode, setMode] = useState<"RECURRING" | "INSTALLMENT" | null>(null);
   const [accountId, setAccountId] = useState(accounts[0]?.id || "");
@@ -48,6 +48,7 @@ export function CompromissosClient({ accounts, categories, initialCommitments }:
       <div className="flex gap-2"><button onClick={() => { setError(""); setMode("RECURRING"); }} className="px-3 py-2.5 rounded-xl bg-white/5 text-xs font-bold text-white"><Repeat2 className="inline w-4 h-4 mr-1" />Recorrência</button><button onClick={() => { setError(""); setMode("INSTALLMENT"); }} className="px-3 py-2.5 rounded-xl bg-emerald-500 text-xs font-black text-slate-950"><Plus className="inline w-4 h-4 mr-1" />Compra parcelada</button></div>
     </div>
     <div className="rounded-2xl border border-cyan-500/20 bg-cyan-500/[0.05] p-4 text-sm text-slate-200"><b className="text-cyan-300">Como funciona:</b> você cadastra uma vez; cada parcela ou mensalidade fica prevista e só entra no saldo quando confirmar.</div>
+    {loadError && <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">{loadError} Execute <code className="font-bold">npx prisma db push</code> e <code className="font-bold">npx prisma generate</code>, depois reinicie o servidor.</div>}
     {commitments.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 p-8 text-sm text-muted-foreground">Nada programado ainda. Comece por suas assinaturas ou uma compra parcelada.</div> :
       <div className="space-y-3">{commitments.map((item) => <div key={item.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-4 flex flex-col sm:flex-row sm:items-center gap-4">
         <div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center shrink-0">{item.sourceType === "RECURRING" ? <Repeat2 className="w-5 h-5 text-cyan-300" /> : <CreditCard className="w-5 h-5 text-emerald-300" />}</div>
