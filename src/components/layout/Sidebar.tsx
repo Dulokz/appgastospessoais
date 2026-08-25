@@ -15,6 +15,7 @@ import {
   TrendingUp,
   BarChart3,
   History,
+  CalendarClock,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -24,6 +25,7 @@ const navItems = [
   { name: "Meu Mês", href: "/resultado-mes", icon: Receipt },
   { name: "Contas", href: "/contas", icon: Wallet },
   { name: "Cartões", href: "/cartoes", icon: CreditCard },
+  { name: "Compromissos", href: "/compromissos", icon: CalendarClock },
   { name: "Investimentos", href: "/investimentos", icon: TrendingUp },
   { name: "Dívidas", href: "/dividas", icon: TrendingDown },
   { name: "Transações", href: "/transacoes", icon: ArrowRightLeft },
