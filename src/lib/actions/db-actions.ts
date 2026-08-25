@@ -215,6 +215,7 @@ export async function createAccount(data: {
 
     revalidatePath("/");
     revalidatePath("/contas");
+    revalidatePath("/cartoes");
     revalidatePath("/investimentos");
     revalidatePath("/meu-patrimonio");
     return newAccount;
