@@ -43,6 +43,8 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
   const [type, setType] = useState("CHECKING");
   const [initialBalanceStr, setInitialBalanceStr] = useState("0");
   const [loading, setLoading] = useState(false);
+  const [openingAdjustment, setOpeningAdjustment] = useState<AccountItem | null>(null);
+  const [newOpeningBalance, setNewOpeningBalance] = useState("");
 
   const financialAccounts = accounts.filter(a => a.type !== "CREDIT_CARD");
   const cards = accounts.filter(a => a.type === "CREDIT_CARD");
@@ -66,12 +68,19 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
     } finally { setLoading(false); }
   };
 
-  const handleCorrectOpeningBalance = async (account: AccountItem) => {
-    const raw = prompt(`Corrigir o saldo inicial de ${account.name}. Isto NÃO cria receita/despesa; apenas corrige a posição de abertura.`, String(account.balance));
-    if (raw === null) return;
-    const value = Number(raw.replace(",", "."));
+  const handleCorrectOpeningBalance = async () => {
+    if (!openingAdjustment) return;
+    const value = Number(newOpeningBalance.replace(",", "."));
     if (!Number.isFinite(value)) return alert("Informe um valor válido.");
-    try { await correctAccountOpeningBalance({ id: account.id, balance: value }); window.location.reload(); } catch (e: any) { alert(e.message || "Não foi possível corrigir."); }
+    setLoading(true);
+    try {
+      await correctAccountOpeningBalance({ id: openingAdjustment.id, balance: value });
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível corrigir.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleArchive = async (id: string) => {
@@ -109,7 +118,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
             {financialAccounts.map(account => (
               <div key={account.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 space-y-4">
                 <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center"><Building2 className="w-5 h-5 text-emerald-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-sm">{account.name}</h3><p className="text-xs text-muted-foreground">{account.institution} · {account.typeLabel}</p></div></div>
-                <div className="pt-3 border-t border-white/8 flex items-end justify-between"><div><p className="text-[11px] text-muted-foreground">Saldo calculado</p><p className={`text-xl font-black ${account.balance < 0 ? "text-rose-400" : "text-white"}`}>{formatCurrencyBRL(account.balance)}</p></div><div className="flex gap-2"><button onClick={() => handleCorrectOpeningBalance(account)} title="Corrigir saldo inicial" className="p-2 rounded-xl bg-white/5 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleArchive(account.id)} title="Arquivar conta" className="p-2 rounded-xl bg-white/5 text-rose-300"><Archive className="w-3.5 h-3.5" /></button><button onClick={() => setReconcileAccount({ id: account.id, name: account.name, calculatedBalance: account.balance })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-emerald-400"><Scale className="w-3.5 h-3.5" />Conferir</button></div></div>
+                <div className="pt-3 border-t border-white/8 flex items-end justify-between"><div><p className="text-[11px] text-muted-foreground">Saldo calculado</p><p className={`text-xl font-black ${account.balance < 0 ? "text-rose-400" : "text-white"}`}>{formatCurrencyBRL(account.balance)}</p></div><div className="flex gap-2"><button onClick={() => { setOpeningAdjustment(account); setNewOpeningBalance(String(account.balance)); }} title="Corrigir saldo inicial" className="p-2 rounded-xl bg-white/5 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleArchive(account.id)} title="Arquivar conta" className="p-2 rounded-xl bg-white/5 text-rose-300"><Archive className="w-3.5 h-3.5" /></button><button onClick={() => setReconcileAccount({ id: account.id, name: account.name, calculatedBalance: account.balance })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-emerald-400"><Scale className="w-3.5 h-3.5" />Conferir</button></div></div>
               </div>
             ))}
           </div>
@@ -138,6 +147,18 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
             <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Nome</label><input value={name} onChange={e => setName(e.target.value)} placeholder={type === "CREDIT_CARD" ? "Ex.: Inter Mastercard" : "Ex.: Conta principal"} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white" /></div>
             <div><label className="text-xs text-muted-foreground font-semibold block mb-1">{type === "CREDIT_CARD" ? "Dívida atual já existente" : "Saldo inicial"}</label><CurrencyInput value={initialBalanceStr} onChangeValue={(_, raw) => setInitialBalanceStr(raw)} /><p className="text-[11px] text-muted-foreground mt-1">{type === "CREDIT_CARD" ? "Informe o valor positivo; o sistema registra como passivo." : "Use este campo como posição inicial/correção, não como receita."}</p></div>
             <div className="flex justify-end gap-3 pt-2"><button onClick={() => setIsAddOpen(false)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">Cancelar</button><button onClick={handleCreate} disabled={loading || !name} className="px-5 py-2 rounded-xl bg-emerald-500 text-xs font-black text-slate-950">{loading ? "Salvando..." : "Salvar"}</button></div>
+          </div>
+        </div>
+      )}
+
+      {openingAdjustment && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-slate-950 border border-white/10 rounded-3xl p-6 space-y-4">
+            <div className="flex items-center justify-between"><div><p className="text-[11px] uppercase tracking-[0.14em] text-cyan-300">Correção de posição inicial</p><h2 className="font-bold text-white">{openingAdjustment.name}</h2></div><button onClick={() => setOpeningAdjustment(null)}><X className="w-5 h-5 text-slate-400" /></button></div>
+            <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-3 text-xs text-slate-300">Este ajuste não cria receita nem despesa. Ele corrige o saldo existente na data-base do seu controle e recalcula o saldo atual pela diferença.</div>
+            <div className="grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-white/5 p-3"><p className="text-muted-foreground">Saldo calculado hoje</p><p className="font-bold text-white mt-1">{formatCurrencyBRL(openingAdjustment.balance)}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-muted-foreground">Novo saldo inicial</p><p className="font-bold text-cyan-300 mt-1">{formatCurrencyBRL(Number(newOpeningBalance) || 0)}</p></div></div>
+            <div><label className="text-xs text-muted-foreground block mb-1">Saldo na data-base</label><CurrencyInput value={newOpeningBalance} onChangeValue={(_, raw) => setNewOpeningBalance(raw)} /></div>
+            <div className="flex justify-end gap-2"><button onClick={() => setOpeningAdjustment(null)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">Cancelar</button><button disabled={loading} onClick={handleCorrectOpeningBalance} className="px-4 py-2 rounded-xl bg-cyan-500 text-xs font-bold text-slate-950">{loading ? "Corrigindo..." : "Confirmar correção"}</button></div>
           </div>
         </div>
       )}
