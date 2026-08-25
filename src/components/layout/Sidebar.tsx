@@ -13,6 +13,7 @@ import {
   Landmark,
   TrendingUp,
   BarChart3,
+  History,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -25,6 +26,7 @@ const navItems = [
   { name: "Dívidas", href: "/dividas", icon: TrendingDown },
   { name: "Transações", href: "/transacoes", icon: ArrowRightLeft },
   { name: "Relatórios", href: "/relatorios", icon: BarChart3 },
+  { name: "Corrigir posição inicial", href: "/ajustar-posicao-inicial", icon: History },
   { name: "Configurações", href: "/configuracoes", icon: Settings },
 ];
 
