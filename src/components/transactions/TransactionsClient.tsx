@@ -22,7 +22,7 @@ export function TransactionsClient({ initialTransactions, categories, accounts }
   const accountNames=useMemo(()=>[...new Set(items.map(x=>x.accountName))].sort(),[items]);
   const rootCategories=useMemo(()=>categories.filter(c=>!c.parentName),[categories]);
   const subcategories=useMemo(()=>categories.filter(c=>c.parentName===categoryParent),[categories,categoryParent]);
-  const searchCategories=useMemo(()=>{const q=categorySearch.trim().toLowerCase();return q?categories.filter(c=>(c.parentName?c.parentName+" ":"")+c.name).toLowerCase().includes(q)).slice(0,12):[]},[categories,categorySearch]);
+  const searchCategories=useMemo(()=>{const q=categorySearch.trim().toLowerCase();return q?categories.filter(c=>((c.parentName?c.parentName+" ":"")+c.name).toLowerCase().includes(q)).slice(0,12):[]},[categories,categorySearch]);
   const filtered=useMemo(()=>items.filter(x=>{
     const hay=[x.description,x.accountName,x.categoryName].filter(Boolean).join(" ").toLowerCase();
     return hay.includes(query.toLowerCase()) && (!accountFilter||x.accountName===accountFilter) && (!categoryFilter||x.categoryId===categoryFilter) && (!typeFilter||x.transactionType===typeFilter) && (!monthFilter||x.date.startsWith(monthFilter));
