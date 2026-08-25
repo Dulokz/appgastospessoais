@@ -164,26 +164,48 @@ export async function createAccount(data: {
   initialBalance: number;
 }) {
   const userId = await getDefaultUserId();
+  const name = data.name.trim();
+  const institutionName = data.institutionName?.trim();
+
+  if (!name) throw new Error("Informe um nome para a conta ou cartão.");
+  if (data.type !== "CASH" && !institutionName) {
+    throw new Error("Selecione ou informe a instituição.");
+  }
 
   return db.$transaction(async (tx) => {
     let institutionId: string | undefined;
-    if (data.institutionName) {
+    if (institutionName) {
       let inst = await tx.financialInstitution.findFirst({
-        where: { userId, name: data.institutionName },
+        where: { userId, name: institutionName },
       });
       if (!inst) {
         inst = await tx.financialInstitution.create({
-          data: { userId, name: data.institutionName },
+          data: { userId, name: institutionName },
         });
       }
       institutionId = inst.id;
+    }
+
+    const duplicate = await tx.account.findFirst({
+      where: {
+        userId,
+        active: true,
+        name: { equals: name, mode: "insensitive" },
+        type: data.type,
+        financialInstitutionId: institutionId ?? null,
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      throw new Error("Já existe uma conta ativa com este nome, tipo e instituição.");
     }
 
     const newAccount = await tx.account.create({
       data: {
         userId,
         financialInstitutionId: institutionId,
-        name: data.name,
+        name,
         type: data.type,
         initialBalance: data.initialBalance,
         calculatedBalance: data.initialBalance,
@@ -194,6 +216,7 @@ export async function createAccount(data: {
     revalidatePath("/");
     revalidatePath("/contas");
     revalidatePath("/investimentos");
+    revalidatePath("/meu-patrimonio");
     return newAccount;
   });
 }
@@ -207,6 +230,7 @@ export async function archiveAccount(id: string) {
   revalidatePath("/");
   revalidatePath("/contas");
   revalidatePath("/investimentos");
+  revalidatePath("/meu-patrimonio");
 }
 
 // ----------------------------------------------------
