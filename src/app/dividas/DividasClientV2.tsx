@@ -2,13 +2,15 @@
 
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
-import { AlertCircle, ArrowRight, Landmark, Plus, TrendingDown, X } from "lucide-react";
+import { AlertCircle, ArrowRight, Landmark, Plus, TrendingDown, X, Pencil, Archive } from "lucide-react";
 import { registerNewCashLoan, registerPreexistingLiability } from "@/lib/actions/position-actions";
+import { archiveLiability, updateLiabilityProfile } from "@/lib/actions/financial-record-management-actions";
 
 interface LiabilityItem {
   id: string;
   name: string;
   institution?: string | null;
+  type: string;
   typeLabel: string;
   originalValue: number;
   currentBalance: number;
@@ -39,6 +41,29 @@ export function DividasClientV2({
   const [error, setError] = useState<string | null>(null);
 
   const total = initialLiabilities.reduce((sum, item) => sum + item.currentBalance, 0);
+
+  async function editLiability(item: LiabilityItem) {
+    const name = prompt("Nome da dívida", item.name);
+    if (name === null || !name.trim()) return;
+    const institution = prompt("Instituição/credor", item.institution || "") ?? "";
+    let currentBalance: number | undefined;
+    if (item.isInitialPosition) {
+      const raw = prompt("Saldo devedor na data-base (posição inicial)", String(item.currentBalance));
+      if (raw === null) return;
+      currentBalance = Number(raw.replace(",", "."));
+      if (!Number.isFinite(currentBalance) || currentBalance < 0) return alert("Informe um saldo válido.");
+    }
+    try {
+      await updateLiabilityProfile({ id: item.id, name, institution, type: item.type, currentBalance });
+      window.location.reload();
+    } catch (e: any) { alert(e.message || "Não foi possível atualizar a dívida."); }
+  }
+
+  async function archive(item: LiabilityItem) {
+    if (!confirm(`Arquivar "${item.name}"? Só é permitido quando o saldo estiver quitado.`)) return;
+    try { await archiveLiability(item.id); window.location.reload(); }
+    catch (e: any) { alert(e.message || "Não foi possível arquivar."); }
+  }
 
   async function save() {
     const amount = Number(value);
@@ -111,7 +136,7 @@ export function DividasClientV2({
                 <p className="text-[11px] text-muted-foreground">Saldo atual</p>
                 <p className="text-xl font-bold text-rose-400">{formatCurrencyBRL(item.currentBalance)}</p>
               </div>
-              <TrendingDown className="w-5 h-5 text-rose-400/70" />
+              <div className="flex gap-1"><button onClick={() => editLiability(item)} title="Editar dívida" className="p-2 rounded-xl bg-cyan-500/10 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => archive(item)} title="Arquivar dívida quitada" className="p-2 rounded-xl bg-rose-500/10 text-rose-300"><Archive className="w-3.5 h-3.5" /></button></div>
             </div>
           </div>
         ))}
