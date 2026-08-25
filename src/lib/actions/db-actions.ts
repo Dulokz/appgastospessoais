@@ -45,10 +45,35 @@ export async function getOnboardingState() {
     step: user?.onboardingStep || 1,
     controlStartDate: user?.controlStartDate ? user.controlStartDate.toISOString().split("T")[0] : null,
     isCompleted: user?.onboardingStatus === "COMPLETED" || !!user?.onboardingCompletedAt,
-    accounts: existingAccounts,
-    investments: existingInvestments,
-    assets: existingAssets,
-    liabilities: existingLiabilities,
+    // Server Actions só podem devolver dados serializáveis ao componente cliente.
+    accounts: existingAccounts.map((account) => ({
+      ...account,
+      initialBalance: Number(account.initialBalance),
+      calculatedBalance: Number(account.calculatedBalance),
+      confirmedBalance: account.confirmedBalance === null ? null : Number(account.confirmedBalance),
+      reconciliationDiff: Number(account.reconciliationDiff),
+    })),
+    investments: existingInvestments.map((position) => ({
+      ...position,
+      quantity: position.quantity === null ? null : Number(position.quantity),
+      averageCost: position.averageCost === null ? null : Number(position.averageCost),
+      currentPrice: position.currentPrice === null ? null : Number(position.currentPrice),
+      currentValue: Number(position.currentValue),
+      acquisitionValue: Number(position.acquisitionValue),
+    })),
+    assets: existingAssets.map((asset) => ({
+      ...asset,
+      acquisitionValue: Number(asset.acquisitionValue),
+      paidEquityValue: asset.paidEquityValue === null ? null : Number(asset.paidEquityValue),
+      currentValue: Number(asset.currentValue),
+    })),
+    liabilities: existingLiabilities.map((liability) => ({
+      ...liability,
+      originalValue: Number(liability.originalValue),
+      currentBalance: Number(liability.currentBalance),
+      interestRate: liability.interestRate === null ? null : Number(liability.interestRate),
+      installmentValue: liability.installmentValue === null ? null : Number(liability.installmentValue),
+    })),
   };
 }
 
