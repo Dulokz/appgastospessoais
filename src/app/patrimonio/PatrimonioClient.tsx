@@ -192,9 +192,10 @@ export function PatrimonioClient({ initialAssets, accounts, categories }: Patrim
                   </div>
                 </div>
 
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold">
-                  Ativo
-                </span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => handleRevalueAsset(asset)} title="Reavaliar bem" className="p-2 rounded-xl bg-cyan-500/10 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => handleArchiveAsset(asset)} title="Arquivar bem" className="p-2 rounded-xl bg-rose-500/10 text-rose-300"><Archive className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
 
               <div className="pt-3 border-t border-white/5 flex items-center justify-between">
