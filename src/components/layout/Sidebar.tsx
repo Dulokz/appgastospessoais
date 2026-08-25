@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Wallet,
+  CreditCard,
   TrendingDown,
   ArrowRightLeft,
   Settings,
@@ -22,6 +23,7 @@ const navItems = [
   { name: "Patrimônio", href: "/meu-patrimonio", icon: Landmark },
   { name: "Meu Mês", href: "/resultado-mes", icon: Receipt },
   { name: "Contas", href: "/contas", icon: Wallet },
+  { name: "Cartões", href: "/cartoes", icon: CreditCard },
   { name: "Investimentos", href: "/investimentos", icon: TrendingUp },
   { name: "Dívidas", href: "/dividas", icon: TrendingDown },
   { name: "Transações", href: "/transacoes", icon: ArrowRightLeft },
