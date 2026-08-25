@@ -15,6 +15,7 @@ interface AccountItem {
   type: string;
   typeLabel: string;
   balance: number;
+  initialBalance: number;
   confirmed: number;
   diff: number;
 }
@@ -43,6 +44,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
   const [type, setType] = useState("CHECKING");
   const [initialBalanceStr, setInitialBalanceStr] = useState("0");
   const [loading, setLoading] = useState(false);
+  const [formError, setFormError] = useState("");
   const [openingAdjustment, setOpeningAdjustment] = useState<AccountItem | null>(null);
   const [newOpeningBalance, setNewOpeningBalance] = useState("");
 
@@ -52,10 +54,19 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
   const cardDebt = cards.reduce((acc, a) => acc + Math.max(0, -a.balance), 0);
 
   const handleCreate = async () => {
-    if (!name) return;
+    const inst = institutionName === "Outra instituição" ? customInstitution.trim() : institutionName;
+    if (!name.trim()) {
+      setFormError("Informe um nome para identificar esta conta ou cartão.");
+      return;
+    }
+    if (institutionName === "Outra instituição" && !inst) {
+      setFormError("Informe o nome da instituição.");
+      return;
+    }
+
+    setFormError("");
     setLoading(true);
     try {
-      const inst = institutionName === "Outra instituição" ? customInstitution : institutionName;
       const typedValue = parseFloat(initialBalanceStr) || 0;
       const initialBal = type === "CREDIT_CARD" ? -Math.abs(typedValue) : typedValue;
       await createAccount({ name, type: type as any, institutionName: inst, initialBalance: initialBal });
@@ -63,8 +74,8 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
       setName("");
       setInitialBalanceStr("0");
       window.location.reload();
-    } catch (err) {
-      console.error("Erro ao criar conta/cartão:", err);
+    } catch (err: any) {
+      setFormError(err?.message || "Não foi possível salvar. Tente novamente.");
     } finally { setLoading(false); }
   };
 
@@ -97,7 +108,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
           <h1 className="text-3xl font-black text-white tracking-tight mt-1">Contas & cartões</h1>
           <p className="text-sm text-muted-foreground mt-1">Contas são ativos. Cartões são passivos e aparecem separadamente.</p>
         </div>
-        <button onClick={() => setIsAddOpen(true)} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black self-start sm:self-auto"><Plus className="w-4 h-4" />Adicionar</button>
+        <button onClick={() => { setFormError(""); setIsAddOpen(true); }} className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-slate-950 text-xs font-black self-start sm:self-auto"><Plus className="w-4 h-4" />Adicionar</button>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
@@ -112,7 +123,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
       </div>
 
       <section className="space-y-3">
-        <div><h2 className="text-sm font-bold text-white">Contas financeiras</h2><p className="text-xs text-muted-foreground">Bancos, dinheiro e custódia.</p></div>
+        <div><h2 className="text-sm font-bold text-white">Contas financeiras</h2><p className="text-xs text-muted-foreground">Bancos, dinheiro e contas de custódia. Produtos investidos ficam em “Investimentos”.</p></div>
         {financialAccounts.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">Nenhuma conta cadastrada.</div> : (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {financialAccounts.map(account => (
@@ -144,9 +155,10 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
             <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Tipo</label><select value={type} onChange={e => { setType(e.target.value); setInitialBalanceStr("0"); }} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">{ACCOUNT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}</select></div>
             <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Instituição</label><select value={institutionName} onChange={e => setInstitutionName(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">{INSTITUTIONS_LIST.map(i => <option key={i}>{i}</option>)}</select></div>
             {institutionName === "Outra instituição" && <input value={customInstitution} onChange={e => setCustomInstitution(e.target.value)} placeholder="Nome da instituição" className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white" />}
-            <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Nome</label><input value={name} onChange={e => setName(e.target.value)} placeholder={type === "CREDIT_CARD" ? "Ex.: Inter Mastercard" : "Ex.: Conta principal"} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white" /></div>
+            <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Nome</label><input value={name} onChange={e => { setName(e.target.value); setFormError(""); }} placeholder={type === "CREDIT_CARD" ? "Ex.: BB Visa" : type === "INVESTMENT" || type === "BROKERAGE" ? "Ex.: Custódia Banco do Brasil" : "Ex.: Conta principal"} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white" /><p className="text-[11px] text-muted-foreground mt-1">{type === "INVESTMENT" || type === "BROKERAGE" ? "Isto cria só a custódia. Depois, em Investimentos, cadastre cada fundo, CDB ou ação separadamente." : "Use um nome que diferencie esta conta das demais."}</p></div>
+            {formError && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-xs text-rose-200">{formError}</p>}
             <div><label className="text-xs text-muted-foreground font-semibold block mb-1">{type === "CREDIT_CARD" ? "Dívida atual já existente" : "Saldo inicial"}</label><CurrencyInput value={initialBalanceStr} onChangeValue={(_, raw) => setInitialBalanceStr(raw)} /><p className="text-[11px] text-muted-foreground mt-1">{type === "CREDIT_CARD" ? "Informe o valor positivo; o sistema registra como passivo." : "Use este campo como posição inicial/correção, não como receita."}</p></div>
-            <div className="flex justify-end gap-3 pt-2"><button onClick={() => setIsAddOpen(false)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">Cancelar</button><button onClick={handleCreate} disabled={loading || !name} className="px-5 py-2 rounded-xl bg-emerald-500 text-xs font-black text-slate-950">{loading ? "Salvando..." : "Salvar"}</button></div>
+            <div className="flex justify-end gap-3 pt-2"><button onClick={() => setIsAddOpen(false)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">Cancelar</button><button onClick={handleCreate} disabled={loading} className="px-5 py-2 rounded-xl bg-emerald-500 text-xs font-black text-slate-950">{loading ? "Salvando..." : "Salvar"}</button></div>
           </div>
         </div>
       )}
