@@ -173,10 +173,10 @@ export async function createAccount(data: {
   if (data.type !== "CASH" && !institutionName) {
     throw new Error("Selecione ou informe a instituição.");
   }
-  if (data.type === "CREDIT_CARD") {
-    if (!Number.isInteger(data.creditCardClosingDay) || !Number.isInteger(data.creditCardDueDay) || (data.creditCardClosingDay || 0) < 1 || (data.creditCardClosingDay || 0) > 31 || (data.creditCardDueDay || 0) < 1 || (data.creditCardDueDay || 0) > 31) {
-      throw new Error("Informe dias válidos de fechamento e vencimento do cartão.");
-    }
+  const closingDay = data.creditCardClosingDay ?? 25;
+  const dueDay = data.creditCardDueDay ?? 5;
+  if (data.type === "CREDIT_CARD" && (!Number.isInteger(closingDay) || !Number.isInteger(dueDay) || closingDay < 1 || closingDay > 31 || dueDay < 1 || dueDay > 31)) {
+    throw new Error("Informe dias válidos de fechamento e vencimento do cartão.");
   }
 
   return db.$transaction(async (tx) => {
@@ -217,8 +217,8 @@ export async function createAccount(data: {
         initialBalance: data.initialBalance,
         calculatedBalance: data.initialBalance,
         confirmedBalance: data.initialBalance,
-        creditCardClosingDay: data.type === "CREDIT_CARD" ? data.creditCardClosingDay : null,
-        creditCardDueDay: data.type === "CREDIT_CARD" ? data.creditCardDueDay : null,
+        creditCardClosingDay: data.type === "CREDIT_CARD" ? closingDay : null,
+        creditCardDueDay: data.type === "CREDIT_CARD" ? dueDay : null,
       },
     });
 
