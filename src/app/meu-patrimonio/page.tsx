@@ -38,11 +38,15 @@ async function getMeuPatrimonioData() {
 export default async function MeuPatrimonioPage() {
   const { accounts, positions, assets, liabilities } = await getMeuPatrimonioData();
 
-  const liquidItems = accounts.map((a) => ({
-    id: a.id,
-    name: `${a.name} (${a.financialInstitution?.name || "Conta"})`,
-    value: a.calculatedBalance.toNumber(),
-  }));
+  // Conta de custódia não é o investimento em si. O valor investido vem exclusivamente
+  // de InvestmentPosition, evitando somar duas vezes o mesmo patrimônio.
+  const liquidItems = accounts
+    .filter((a) => !["INVESTMENT", "BROKERAGE"].includes(a.type))
+    .map((a) => ({
+      id: a.id,
+      name: `${a.name} (${a.financialInstitution?.name || "Conta"})`,
+      value: a.calculatedBalance.toNumber(),
+    }));
 
   const investmentItems = positions.map((p) => ({
     id: p.id,
