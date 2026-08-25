@@ -12,6 +12,7 @@ import {
   Info,
 } from "lucide-react";
 import { addForgottenInitialPosition } from "@/lib/actions/initial-position-actions";
+import { ASSET_CATEGORY_GROUPS, ASSET_CATEGORY_OPTIONS } from "@/lib/asset-categories";
 
 interface Props {
   controlStartDate: string | null;
@@ -23,7 +24,7 @@ type Kind = "ACCOUNT" | "INVESTMENT" | "ASSET" | "LIABILITY";
 const kinds = [
   { id: "ACCOUNT" as const, title: "Conta / dinheiro", text: "Saldo que já existia na data inicial.", icon: Wallet },
   { id: "INVESTMENT" as const, title: "Investimento", text: "Aplicação ou posição que ficou de fora.", icon: TrendingUp },
-  { id: "ASSET" as const, title: "Bem", text: "Carro, imóvel, equipamento ou outro ativo.", icon: Building2 },
+  { id: "ASSET" as const, title: "Bem", text: "Imóvel, veículo, eletrônico, ferramenta, máquina ou outro ativo.", icon: Building2 },
   { id: "LIABILITY" as const, title: "Dívida", text: "Passivo que já existia e não foi cadastrado.", icon: TrendingDown },
 ];
 
@@ -170,7 +171,7 @@ export function InitialPositionAdjustmentClient({ controlStartDate, accounts }: 
             <>
               <div>
                 <label className="text-xs text-muted-foreground font-semibold block mb-1">Descrição</label>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "ASSET" ? "Ex.: Jetta 2.0" : kind === "LIABILITY" ? "Ex.: Saldo devedor apartamento" : kind === "INVESTMENT" ? "Ex.: BBAS3 / Previdência" : "Ex.: Conta Sicoob"} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white outline-none focus:border-emerald-500/50" />
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "ASSET" ? "Ex.: Notebook, furadeira, Jetta, apartamento..." : kind === "LIABILITY" ? "Ex.: Saldo devedor apartamento" : kind === "INVESTMENT" ? "Ex.: BBAS3 / Previdência" : "Ex.: Conta Sicoob"} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white outline-none focus:border-emerald-500/50" />
               </div>
 
               {kind === "ACCOUNT" && (
@@ -190,7 +191,28 @@ export function InitialPositionAdjustmentClient({ controlStartDate, accounts }: 
               )}
 
               {kind === "ASSET" && (
-                <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Categoria</label><select value={subtype} onChange={(e) => setSubtype(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white"><option value="REAL_ESTATE">Imóvel</option><option value="VEHICLE">Veículo</option><option value="EQUIPMENT">Máquina / equipamento / ferramenta relevante</option><option value="CORPORATE_SHARE">Participação societária</option><option value="OTHER">Outro</option></select></div>
+                <div>
+                  <label className="text-xs text-muted-foreground font-semibold block mb-1">Categoria patrimonial</label>
+                  <select
+                    value={subtype}
+                    onChange={(e) => setSubtype(e.target.value)}
+                    className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white"
+                  >
+                    <option value="">Selecione a categoria...</option>
+                    {ASSET_CATEGORY_GROUPS.map((group) => (
+                      <optgroup key={group} label={group}>
+                        {ASSET_CATEGORY_OPTIONS.filter((item) => item.group === group).map((item) => (
+                          <option key={item.value} value={item.value}>
+                            {item.label}{item.examples ? ` — ${item.examples}` : ""}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ))}
+                  </select>
+                  <p className="text-[11px] text-muted-foreground mt-1.5">
+                    Cadastre somente bens com relevância econômica. Não precisa transformar cada objeto pequeno da casa em patrimônio.
+                  </p>
+                </div>
               )}
 
               {kind === "LIABILITY" && (
