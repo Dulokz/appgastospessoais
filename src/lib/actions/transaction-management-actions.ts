@@ -86,3 +86,82 @@ export async function deleteSimpleTransaction(id: string) {
 
   refreshViews();
 }
+
+
+function getInvoiceKeyForDate(date: Date, closingDay?: number | null) {
+  const reference = new Date(date);
+  if (reference.getDate() > (closingDay || 25)) reference.setMonth(reference.getMonth() + 1);
+  return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+}
+
+/**
+ * Entrada manual única para as três operações cotidianas.
+ * Não cria lançamentos previstos: cada confirmação representa um fato que já ocorreu.
+ */
+export async function createGuidedTransaction(input: {
+  kind: "EXPENSE" | "INCOME" | "TRANSFER";
+  description: string;
+  amount: number;
+  date: string;
+  accountId: string;
+  destinationAccountId?: string | null;
+  categoryId?: string | null;
+  notes?: string | null;
+}) {
+  const userId = await getDefaultUserId();
+  const description = input.description.trim();
+  if (!description) throw new Error("Dê um nome ao lançamento para reconhecê-lo depois.");
+  if (!Number.isFinite(input.amount) || input.amount <= 0) throw new Error("Informe um valor maior que zero.");
+  const date = new Date(`${input.date}T12:00:00`);
+  if (Number.isNaN(date.getTime())) throw new Error("Informe uma data válida.");
+
+  await db.$transaction(async (tx) => {
+    const account = await tx.account.findFirst({ where: { id: input.accountId, userId, active: true } });
+    if (!account) throw new Error("Escolha uma conta ou cartão ativo.");
+
+    if (input.categoryId) {
+      const category = await tx.category.findFirst({ where: { id: input.categoryId, userId, deletedAt: null } });
+      if (!category) throw new Error("A categoria escolhida não é válida.");
+    }
+
+    if (input.kind === "TRANSFER") {
+      if (!input.destinationAccountId || input.destinationAccountId === input.accountId) {
+        throw new Error("Escolha uma conta de destino diferente da origem.");
+      }
+      const destination = await tx.account.findFirst({ where: { id: input.destinationAccountId, userId, active: true } });
+      if (!destination) throw new Error("A conta de destino não é válida.");
+
+      await tx.transaction.create({
+        data: {
+          userId, accountId: account.id, destinationAccountId: destination.id,
+          amount: new Decimal(input.amount), date, direction: "DEBIT", transactionType: "TRANSFER",
+          description, notes: input.notes?.trim() || null,
+          allocations: { create: [{ allocationType: "TRANSFER", amount: new Decimal(input.amount) }] },
+        },
+      });
+      await tx.account.update({ where: { id: account.id }, data: { calculatedBalance: { decrement: new Decimal(input.amount) } } });
+      await tx.account.update({ where: { id: destination.id }, data: { calculatedBalance: { increment: new Decimal(input.amount) } } });
+      return;
+    }
+
+    const isExpense = input.kind === "EXPENSE";
+    await tx.transaction.create({
+      data: {
+        userId, accountId: account.id, amount: new Decimal(input.amount), date,
+        direction: isExpense ? "DEBIT" : "CREDIT",
+        transactionType: isExpense ? "EXPENSE" : "INCOME",
+        categoryId: input.categoryId || null, description, notes: input.notes?.trim() || null,
+        cardInvoiceKey: isExpense && account.type === "CREDIT_CARD" ? getInvoiceKeyForDate(date, account.creditCardClosingDay) : null,
+        allocations: { create: [{ allocationType: isExpense ? "EXPENSE" : "INCOME", amount: new Decimal(input.amount), categoryId: input.categoryId || null }] },
+      },
+    });
+    await tx.account.update({
+      where: { id: account.id },
+      data: { calculatedBalance: isExpense ? { decrement: new Decimal(input.amount) } : { increment: new Decimal(input.amount) } },
+    });
+  });
+
+  refreshViews();
+  revalidatePath("/cartoes");
+  revalidatePath("/cartoes/[id]", "page");
+}
