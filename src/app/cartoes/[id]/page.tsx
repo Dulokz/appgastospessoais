@@ -17,7 +17,6 @@ export default async function FaturaPage({ params }: { params: { id: string } })
     db.transaction.findMany({
       where: {
         userId,
-        cardInvoiceKey: { not: null },
         OR: [{ accountId: card.id }, { destinationAccountId: card.id }],
       },
       include: { category: true, account: { include: { financialInstitution: true } } },
@@ -31,8 +30,13 @@ export default async function FaturaPage({ params }: { params: { id: string } })
   ]);
 
   const grouped = new Map<string, { key: string; purchases: any[]; payments: any[] }>();
+  const invoiceKeyFor = (date: Date) => {
+    const reference = new Date(date);
+    if (reference.getDate() > (card.creditCardClosingDay || 25)) reference.setMonth(reference.getMonth() + 1);
+    return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+  };
   for (const transaction of transactions) {
-    const key = transaction.cardInvoiceKey!;
+    const key = transaction.cardInvoiceKey || invoiceKeyFor(transaction.date);
     if (!grouped.has(key)) grouped.set(key, { key, purchases: [], payments: [] });
     const target = grouped.get(key)!;
     if (transaction.transactionType === "CARD_PAYMENT" && transaction.destinationAccountId === card.id) {
