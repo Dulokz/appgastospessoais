@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { createQuickTransactionV2, QuickFlow } from "@/lib/actions/quick-transaction-actions";
+import { ASSET_CATEGORY_GROUPS, ASSET_CATEGORY_OPTIONS } from "@/lib/asset-categories";
 
 interface QuickRegisterModalProps {
   isOpen: boolean;
@@ -20,14 +21,6 @@ interface QuickRegisterModalProps {
   accounts: { id: string; name: string; type: string }[];
   categories: { id: string; name: string }[];
 }
-
-const ASSET_CATEGORIES = [
-  { value: "REAL_ESTATE", label: "Imóvel" },
-  { value: "VEHICLE", label: "Veículo" },
-  { value: "EQUIPMENT", label: "Máquina / equipamento / ferramenta" },
-  { value: "CORPORATE_SHARE", label: "Participação societária" },
-  { value: "OTHER", label: "Outro bem" },
-];
 
 const actions: { id: QuickFlow; title: string; subtitle: string; icon: any }[] = [
   { id: "GASTEI", title: "Gastei", subtitle: "Dinheiro, débito ou cartão", icon: TrendingDown },
@@ -46,7 +39,7 @@ export function QuickRegisterModal({ isOpen, onClose, accounts, categories }: Qu
   const [description, setDescription] = useState("");
   const [treatAs, setTreatAs] = useState<"EXPENSE" | "ASSET">("ASSET");
   const [assetName, setAssetName] = useState("");
-  const [assetCategory, setAssetCategory] = useState("EQUIPMENT");
+  const [assetCategory, setAssetCategory] = useState("TOOLS");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -74,6 +67,7 @@ export function QuickRegisterModal({ isOpen, onClose, accounts, categories }: Qu
     setDescription("");
     setAssetName("");
     setTreatAs("ASSET");
+    setAssetCategory("TOOLS");
     setErrorMsg(null);
   };
 
@@ -175,12 +169,25 @@ export function QuickRegisterModal({ isOpen, onClose, accounts, categories }: Qu
 
               {flow === "COMPREI_BEM" && (
                 <div className="space-y-4 rounded-2xl border border-white/10 bg-white/[0.025] p-4">
-                  <div><label className="text-xs text-muted-foreground font-semibold block mb-1.5">O que você comprou?</label><input value={assetName} onChange={(e) => setAssetName(e.target.value)} placeholder="Ex.: furadeira profissional" className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white" /></div>
+                  <div><label className="text-xs text-muted-foreground font-semibold block mb-1.5">O que você comprou?</label><input value={assetName} onChange={(e) => setAssetName(e.target.value)} placeholder="Ex.: notebook, furadeira, câmera, Jetta..." className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white" /></div>
                   <div className="grid grid-cols-2 gap-3">
                     <button onClick={() => setTreatAs("ASSET")} className={`p-3 rounded-xl border text-left ${treatAs === "ASSET" ? "border-emerald-500/50 bg-emerald-500/8" : "border-white/10"}`}><Building2 className="w-4 h-4 text-emerald-400" /><p className="text-xs font-bold text-white mt-2">Patrimônio</p><p className="text-[10px] text-muted-foreground mt-1">Conta/cartão diminui, bem aumenta.</p></button>
                     <button onClick={() => setTreatAs("EXPENSE")} className={`p-3 rounded-xl border text-left ${treatAs === "EXPENSE" ? "border-rose-500/50 bg-rose-500/8" : "border-white/10"}`}><TrendingDown className="w-4 h-4 text-rose-400" /><p className="text-xs font-bold text-white mt-2">Consumo</p><p className="text-[10px] text-muted-foreground mt-1">Entra como gasto do mês.</p></button>
                   </div>
-                  {treatAs === "ASSET" && <select value={assetCategory} onChange={(e) => setAssetCategory(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">{ASSET_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}</select>}
+                  {treatAs === "ASSET" && (
+                    <div>
+                      <label className="text-xs text-muted-foreground font-semibold block mb-1.5">Categoria patrimonial</label>
+                      <select value={assetCategory} onChange={(e) => setAssetCategory(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">
+                        {ASSET_CATEGORY_GROUPS.map((group) => (
+                          <optgroup key={group} label={group}>
+                            {ASSET_CATEGORY_OPTIONS.filter((item) => item.group === group).map((item) => (
+                              <option key={item.value} value={item.value}>{item.label}{item.examples ? ` — ${item.examples}` : ""}</option>
+                            ))}
+                          </optgroup>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               )}
 
