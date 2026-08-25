@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
-import { Wallet, Plus, Building2, Scale, X, CreditCard } from "lucide-react";
+import { Wallet, Plus, Building2, Scale, X, CreditCard, Pencil, Archive } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { ReconcileModal } from "@/components/accounts/ReconcileModal";
 import { createAccount, archiveAccount } from "@/lib/actions/db-actions";
+import { correctAccountOpeningBalance } from "@/lib/actions/financial-record-management-actions";
 
 interface AccountItem {
   id: string;
@@ -65,7 +66,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
     } finally { setLoading(false); }
   };
 
-  const handleArchive = async (id: string) => {
+  const handleCorrectOpeningBalance = async (account: AccountItem) => {\n    const raw = prompt(`Corrigir o saldo inicial de ${account.name}. Isto NÃO cria receita/despesa; apenas corrige a posição de abertura.`, String(account.balance));\n    if (raw === null) return;\n    const value = Number(raw.replace(",", "."));\n    if (!Number.isFinite(value)) return alert("Informe um valor válido.");\n    try { await correctAccountOpeningBalance({ id: account.id, balance: value }); window.location.reload(); } catch (e: any) { alert(e.message || "Não foi possível corrigir."); }\n  };\n\n  const handleArchive = async (id: string) => {
     if (!confirm("Deseja arquivar este item?")) return;
     await archiveAccount(id);
     setAccounts(prev => prev.filter(a => a.id !== id));
@@ -100,7 +101,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
             {financialAccounts.map(account => (
               <div key={account.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 space-y-4">
                 <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center"><Building2 className="w-5 h-5 text-emerald-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-sm">{account.name}</h3><p className="text-xs text-muted-foreground">{account.institution} · {account.typeLabel}</p></div></div>
-                <div className="pt-3 border-t border-white/8 flex items-end justify-between"><div><p className="text-[11px] text-muted-foreground">Saldo calculado</p><p className={`text-xl font-black ${account.balance < 0 ? "text-rose-400" : "text-white"}`}>{formatCurrencyBRL(account.balance)}</p></div><button onClick={() => setReconcileAccount({ id: account.id, name: account.name, calculatedBalance: account.balance })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-emerald-400"><Scale className="w-3.5 h-3.5" />Conferir</button></div>
+                <div className="pt-3 border-t border-white/8 flex items-end justify-between"><div><p className="text-[11px] text-muted-foreground">Saldo calculado</p><p className={`text-xl font-black ${account.balance < 0 ? "text-rose-400" : "text-white"}`}>{formatCurrencyBRL(account.balance)}</p></div><div className="flex gap-2"><button onClick={() => handleCorrectOpeningBalance(account)} title="Corrigir saldo inicial" className="p-2 rounded-xl bg-white/5 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleArchive(account.id)} title="Arquivar conta" className="p-2 rounded-xl bg-white/5 text-rose-300"><Archive className="w-3.5 h-3.5" /></button><button onClick={() => setReconcileAccount({ id: account.id, name: account.name, calculatedBalance: account.balance })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-emerald-400"><Scale className="w-3.5 h-3.5" />Conferir</button></div></div>
               </div>
             ))}
           </div>
