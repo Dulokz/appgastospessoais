@@ -29,7 +29,8 @@ import {
   FolderPlus,
   Tags,
 } from "lucide-react";
-import { createCategory, updateCategory, deleteCategory } from "@/lib/actions/db-actions";
+import { createCategory, updateCategory } from "@/lib/actions/db-actions";
+import { archiveCategory } from "@/lib/actions/category-management-actions";
 
 interface CategorySub {
   id: string;
@@ -194,7 +195,7 @@ export function CategoriasClient({ initialCategories }: CategoriasClientProps) {
                   </button>
                   <button
                     onClick={() => handleDelete(cat.id, cat.name)}
-                    title="Excluir Categoria"
+                    title="Arquivar Categoria"
                     className="p-1.5 rounded-lg text-slate-400 hover:text-rose-400 hover:bg-white/10 transition-all"
                   >
                     <Trash2 className="w-4 h-4" />
@@ -226,7 +227,7 @@ export function CategoriasClient({ initialCategories }: CategoriasClientProps) {
                         </button>
                         <button
                           onClick={() => handleDelete(sub.id, sub.name)}
-                          title="Excluir Subcategoria"
+                          title="Arquivar Subcategoria"
                           className="p-1 text-slate-400 hover:text-rose-400"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
