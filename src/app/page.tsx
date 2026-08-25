@@ -1,19 +1,17 @@
 import { db } from "@/lib/db";
 import { NetWorthService, AccountData, AssetData, LiabilityData } from "@/lib/services/net-worth.service";
 import { formatCurrencyBRL } from "@/lib/decimal";
-import { ACCOUNT_TYPE_LABELS, TRANSACTION_TYPE_LABELS } from "@/lib/translations";
 import { NetWorthCharts } from "@/components/dashboard/NetWorthCharts";
 import {
   Wallet,
   TrendingUp,
-  Building,
+  Building2,
   TrendingDown,
-  ShieldCheck,
-  Plus,
-  ArrowUpRight,
-  ArrowDownRight,
-  Shuffle,
-  Layers,
+  ArrowRight,
+  AlertTriangle,
+  CircleDollarSign,
+  Receipt,
+  Landmark,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -31,46 +29,23 @@ async function getDashboardData() {
         assets: { where: { active: true } },
         investmentPositions: { where: { active: true } },
         liabilities: { where: { active: true } },
-        netWorthSnapshots: {
-          orderBy: { date: "asc" },
-        },
+        netWorthSnapshots: { orderBy: { date: "asc" } },
       },
     });
 
     if (!user) return null;
 
-    // 1. Consulta independente para TODAS as transações do mês atual (Sem limite)
     const currentMonthTransactions = await db.transaction.findMany({
       where: {
         userId: user.id,
-        date: {
-          gte: startOfMonth,
-          lt: startOfNextMonth,
-        },
+        date: { gte: startOfMonth, lt: startOfNextMonth },
       },
-      include: {
-        allocations: true,
-      },
-    });
-
-    // 2. Consulta independente para o Feed de Últimas Movimentações (Limitado a 10)
-    const recentTransactions = await db.transaction.findMany({
-      where: { userId: user.id },
-      orderBy: { date: "desc" },
-      take: 10,
-      include: {
-        account: true,
-        destinationAccount: true,
-        category: true,
-        allocations: {
-          include: { category: true },
-        },
-      },
+      include: { allocations: true },
     });
 
     const accounts: AccountData[] = user.accounts.map((a) => ({
       id: a.id,
-      type: a.type as any,
+      type: a.type as AccountData["type"],
       calculatedBalance: a.calculatedBalance.toString(),
       confirmedBalance: a.confirmedBalance?.toString(),
       active: a.active,
@@ -78,16 +53,11 @@ async function getDashboardData() {
 
     const assets: AssetData[] = user.assets.map((a) => ({
       id: a.id,
-      category: a.category as any,
+      category: a.category as AssetData["category"],
       currentValue: a.currentValue.toString(),
       considerInNetWorth: a.considerInNetWorth,
       active: a.active,
     }));
-
-    const investmentPositionTotal = user.investmentPositions.reduce(
-      (acc, pos) => acc + pos.currentValue.toNumber(),
-      0
-    );
 
     const liabilities: LiabilityData[] = user.liabilities.map((l) => ({
       id: l.id,
@@ -96,9 +66,23 @@ async function getDashboardData() {
     }));
 
     const summary = NetWorthService.calculateSummary(accounts, assets, liabilities);
-    summary.investmentAssets = summary.investmentAssets.add(investmentPositionTotal);
+    const positionsTotal = user.investmentPositions.reduce((acc, pos) => acc + pos.currentValue.toNumber(), 0);
+    summary.investmentAssets = summary.investmentAssets.add(positionsTotal);
     summary.totalAssets = summary.liquidAssets.add(summary.investmentAssets).add(summary.physicalAssets);
     summary.netWorth = summary.totalAssets.sub(summary.totalLiabilities);
+    summary.liquidNetWorth = summary.liquidAssets.add(summary.investmentAssets).sub(summary.totalLiabilities);
+
+    let income = 0;
+    let expenses = 0;
+    for (const tx of currentMonthTransactions) {
+      if (tx.transactionType === "INCOME") income += tx.amount.toNumber();
+      if (tx.transactionType === "EXPENSE") expenses += tx.amount.toNumber();
+      if (tx.transactionType === "LIABILITY_PAYMENT") {
+        for (const alloc of tx.allocations) {
+          if (["EXPENSE", "INTEREST", "FEE"].includes(alloc.allocationType)) expenses += alloc.amount.toNumber();
+        }
+      }
+    }
 
     const history = user.netWorthSnapshots.map((s) => ({
       dateStr: new Date(s.date).toLocaleDateString("pt-BR", { month: "short", year: "2-digit" }),
@@ -107,232 +91,207 @@ async function getDashboardData() {
       totalLiabilities: s.totalLiabilities.toNumber(),
     }));
 
-    // Cálculos estritos de Receitas e Despesas sobre TODAS as transações do mês vigente
-    let currentMonthIncome = 0;
-    let currentMonthExpenses = 0;
+    const previousNetWorth = history.length >= 2 ? history[history.length - 2].netWorth : null;
+    const snapshotNetWorth = history.length ? history[history.length - 1].netWorth : summary.netWorth.toNumber();
+    const netWorthChange = previousNetWorth === null ? null : snapshotNetWorth - previousNetWorth;
+    const netWorthChangePct = previousNetWorth && previousNetWorth !== 0 ? (netWorthChange! / previousNetWorth) * 100 : null;
 
-    for (const tx of currentMonthTransactions) {
-      if (tx.transactionType === "INCOME") {
-        currentMonthIncome += tx.amount.toNumber();
-      } else if (tx.transactionType === "EXPENSE" || tx.transactionType === "LIABILITY_PAYMENT") {
-        if (tx.allocations && tx.allocations.length > 0) {
-          for (const alloc of tx.allocations) {
-            if (
-              alloc.allocationType === "EXPENSE" ||
-              alloc.allocationType === "INTEREST" ||
-              alloc.allocationType === "FEE"
-            ) {
-              currentMonthExpenses += alloc.amount.toNumber();
-            }
-          }
-        } else if (tx.transactionType === "EXPENSE") {
-          currentMonthExpenses += tx.amount.toNumber();
-        }
-      }
-    }
+    const negativeAccounts = user.accounts.filter((a) => a.calculatedBalance.toNumber() < 0).length;
+    const reconciliationAlerts = user.accounts.filter((a) => Math.abs(a.reconciliationDiff.toNumber()) > 0.01).length;
 
     return {
-      user,
       summary,
       history,
-      accounts: user.accounts,
-      assets: user.assets,
-      liabilities: user.liabilities,
-      recentTransactions,
-      currentMonthIncome,
-      currentMonthExpenses,
-      currentMonthResult: currentMonthIncome - currentMonthExpenses,
+      income,
+      expenses,
+      monthResult: income - expenses,
+      negativeAccounts,
+      reconciliationAlerts,
+      activeLiabilities: user.liabilities.length,
+      netWorthChange,
+      netWorthChangePct,
     };
   } catch (error) {
-    console.error("Erro ao carregar dados do banco:", error);
+    console.error("Erro ao carregar dashboard:", error);
     return null;
   }
+}
+
+function MetricCard({
+  label,
+  value,
+  detail,
+  href,
+  icon: Icon,
+  danger = false,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+  href: string;
+  icon: React.ElementType;
+  danger?: boolean;
+}) {
+  return (
+    <Link href={href} className="rounded-2xl border border-white/8 bg-white/[0.025] p-5 hover:bg-white/[0.045] transition-colors">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground font-semibold">{label}</p>
+          <p className={`text-2xl font-bold mt-2 ${danger ? "text-rose-400" : "text-white"}`}>{value}</p>
+          <p className="text-xs text-muted-foreground mt-1">{detail}</p>
+        </div>
+        <Icon className={`w-5 h-5 ${danger ? "text-rose-400" : "text-muted-foreground"}`} />
+      </div>
+    </Link>
+  );
 }
 
 export default async function DashboardPage() {
   const data = await getDashboardData();
 
-  const hasData = data && (data.accounts.length > 0 || data.assets.length > 0 || data.liabilities.length > 0);
-
-  const summary = data?.summary || {
-    liquidAssets: new (require("@/lib/decimal").Decimal)(0),
-    investmentAssets: new (require("@/lib/decimal").Decimal)(0),
-    physicalAssets: new (require("@/lib/decimal").Decimal)(0),
-    totalAssets: new (require("@/lib/decimal").Decimal)(0),
-    totalLiabilities: new (require("@/lib/decimal").Decimal)(0),
-    netWorth: new (require("@/lib/decimal").Decimal)(0),
-    liquidNetWorth: new (require("@/lib/decimal").Decimal)(0),
-  };
-
-  const history = data?.history || [];
+  const summary = data?.summary;
+  const netWorth = summary?.netWorth.toNumber() ?? 0;
+  const totalAssets = summary?.totalAssets.toNumber() ?? 0;
+  const totalLiabilities = summary?.totalLiabilities.toNumber() ?? 0;
+  const liquidAssets = summary?.liquidAssets.toNumber() ?? 0;
+  const investmentAssets = summary?.investmentAssets.toNumber() ?? 0;
+  const physicalAssets = summary?.physicalAssets.toNumber() ?? 0;
 
   const allocations = [
-    { name: "Disponível", value: summary.liquidAssets.toNumber(), color: "#06b6d4" },
-    { name: "Investimentos", value: summary.investmentAssets.toNumber(), color: "#10b981" },
-    { name: "Bens", value: summary.physicalAssets.toNumber(), color: "#a855f7" },
-    { name: "Dívidas", value: summary.totalLiabilities.toNumber(), color: "#f43f5e" },
+    { name: "Disponível", value: liquidAssets, color: "#94a3b8" },
+    { name: "Investimentos", value: investmentAssets, color: "#10b981" },
+    { name: "Bens", value: physicalAssets, color: "#64748b" },
+    { name: "Dívidas", value: totalLiabilities, color: "#f43f5e" },
   ];
 
+  const totalAlerts = (data?.negativeAccounts ?? 0) + (data?.reconciliationAlerts ?? 0);
+  const changePositive = (data?.netWorthChange ?? 0) >= 0;
+
   return (
-    <div className="space-y-8">
-      {/* Header Principal de Patrimônio Líquido */}
-      <div className="glass-card p-6 md:p-8 rounded-3xl relative overflow-hidden">
-        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
-
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <ShieldCheck className="w-5 h-5 text-emerald-400" />
-              <span className="text-xs font-semibold text-emerald-400 uppercase tracking-widest">
-                Patrimônio Líquido Consolidado
-              </span>
-            </div>
-            <div className="text-4xl md:text-5xl font-black text-white tracking-tight">
-              {formatCurrencyBRL(summary.netWorth)}
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              Total de Ativos ({formatCurrencyBRL(summary.totalAssets)}) menos Passivos Totais ({formatCurrencyBRL(summary.totalLiabilities)})
+    <div className="space-y-5 md:space-y-7">
+      {/* MOBILE: síntese e ação rápida */}
+      <section className="md:hidden space-y-4">
+        <div className="pt-2">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Patrimônio líquido</p>
+          <h1 className="text-4xl font-black text-white tracking-tight mt-2">{formatCurrencyBRL(netWorth)}</h1>
+          {data?.netWorthChange !== null && data?.netWorthChange !== undefined ? (
+            <p className={`text-sm font-semibold mt-2 ${changePositive ? "text-emerald-400" : "text-rose-400"}`}>
+              {changePositive ? "▲" : "▼"} {formatCurrencyBRL(Math.abs(data.netWorthChange))}
+              {data.netWorthChangePct !== null ? ` (${Math.abs(data.netWorthChangePct).toFixed(1)}%)` : ""} desde o último fechamento
             </p>
-          </div>
-
-          {!hasData && (
-            <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-300 space-y-1">
-              <p className="font-bold">Bem-vindo ao Aegis Riqueza!</p>
-              <p className="text-emerald-300/80">Comece cadastrando suas contas, bens e investimentos para ver a evolução patrimonial real.</p>
-            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground mt-2">O histórico começa após o primeiro fechamento patrimonial.</p>
           )}
         </div>
-      </div>
 
-      {/* Cartões dos 4 Pilares Patrimoniais */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Link href="/contas" className="glass-card p-5 rounded-2xl block group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dinheiro Disponível</span>
-            <div className="p-2 rounded-xl bg-cyan-500/10 text-cyan-400 group-hover:bg-cyan-500/20 transition-all">
-              <Wallet className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-white mb-1">
-            {formatCurrencyBRL(summary.liquidAssets)}
-          </div>
-          <p className="text-xs text-muted-foreground">Contas correntes, poupança e carteira</p>
-        </Link>
-
-        <Link href="/patrimonio" className="glass-card p-5 rounded-2xl block group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Investimentos</span>
-            <div className="p-2 rounded-xl bg-emerald-500/10 text-emerald-400 group-hover:bg-emerald-500/20 transition-all">
-              <TrendingUp className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-white mb-1">
-            {formatCurrencyBRL(summary.investmentAssets)}
-          </div>
-          <p className="text-xs text-muted-foreground">Tesouro, Ações, FIIs e saldo corretora</p>
-        </Link>
-
-        <Link href="/patrimonio" className="glass-card p-5 rounded-2xl block group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Bens Patrimoniais</span>
-            <div className="p-2 rounded-xl bg-purple-500/10 text-purple-400 group-hover:bg-purple-500/20 transition-all">
-              <Building className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-white mb-1">
-            {formatCurrencyBRL(summary.physicalAssets)}
-          </div>
-          <p className="text-xs text-muted-foreground">Imóveis, veículos e equipamentos</p>
-        </Link>
-
-        <Link href="/dividas" className="glass-card p-5 rounded-2xl block group">
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Dívidas (Passivos)</span>
-            <div className="p-2 rounded-xl bg-rose-500/10 text-rose-400 group-hover:bg-rose-500/20 transition-all">
-              <TrendingDown className="w-5 h-5" />
-            </div>
-          </div>
-          <div className="text-2xl font-bold text-rose-400 mb-1">
-            {formatCurrencyBRL(summary.totalLiabilities)}
-          </div>
-          <p className="text-xs text-muted-foreground">Financiamentos e empréstimos</p>
-        </Link>
-      </div>
-
-      {/* Bloco Este Mês (Consulta Independente do Mês Vigente) */}
-      <div className="glass-card p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4">
-        <div>
-          <h3 className="font-bold text-white text-base">Este Mês (Consolidado)</h3>
-          <p className="text-xs text-muted-foreground">Cálculo exato sobre TODAS as movimentações do mês atual</p>
+        <div className="grid grid-cols-2 gap-3">
+          <MetricCard label="Disponível" value={formatCurrencyBRL(liquidAssets)} detail="contas e caixa" href="/contas" icon={Wallet} />
+          <MetricCard label="Investimentos" value={formatCurrencyBRL(investmentAssets)} detail="carteira consolidada" href="/investimentos" icon={TrendingUp} />
+          <MetricCard label="Bens" value={formatCurrencyBRL(physicalAssets)} detail="imóveis e veículos" href="/meu-patrimonio" icon={Building2} />
+          <MetricCard label="Dívidas" value={formatCurrencyBRL(totalLiabilities)} detail="passivos ativos" href="/dividas" icon={TrendingDown} danger />
         </div>
 
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="glass-panel px-4 py-2 rounded-xl border border-emerald-500/20 text-center">
-            <span className="text-[10px] text-muted-foreground uppercase block">Recebi</span>
-            <span className="text-sm font-bold text-emerald-400">+{formatCurrencyBRL(data?.currentMonthIncome || 0)}</span>
+        <Link href="/resultado-mes" className="flex items-center justify-between rounded-2xl border border-white/8 bg-white/[0.025] p-4">
+          <div>
+            <p className="text-xs text-muted-foreground">Resultado deste mês</p>
+            <p className={`text-xl font-bold mt-1 ${(data?.monthResult ?? 0) >= 0 ? "text-white" : "text-rose-400"}`}>
+              {formatCurrencyBRL(data?.monthResult ?? 0)}
+            </p>
+          </div>
+          <ArrowRight className="w-5 h-5 text-muted-foreground" />
+        </Link>
+
+        {totalAlerts > 0 && (
+          <Link href="/contas" className="flex items-center gap-3 rounded-2xl border border-amber-500/20 bg-amber-500/5 p-4">
+            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0" />
+            <div className="flex-1">
+              <p className="text-sm font-semibold text-white">{totalAlerts} {totalAlerts === 1 ? "item precisa" : "itens precisam"} de revisão</p>
+              <p className="text-xs text-muted-foreground">Saldo negativo ou diferença de conciliação.</p>
+            </div>
+            <ArrowRight className="w-4 h-4 text-muted-foreground" />
+          </Link>
+        )}
+      </section>
+
+      {/* DESKTOP: central de comando */}
+      <section className="hidden md:block space-y-6">
+        <div className="grid grid-cols-12 gap-5">
+          <div className="col-span-8 rounded-3xl border border-white/8 bg-white/[0.025] p-7">
+            <div className="flex items-start justify-between gap-6">
+              <div>
+                <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Patrimônio líquido consolidado</p>
+                <h1 className="text-5xl font-black text-white tracking-tight mt-3">{formatCurrencyBRL(netWorth)}</h1>
+                <p className="text-sm text-muted-foreground mt-3">
+                  {formatCurrencyBRL(totalAssets)} em ativos · {formatCurrencyBRL(totalLiabilities)} em passivos
+                </p>
+              </div>
+              <Link href="/meu-patrimonio" className="text-xs font-semibold text-emerald-400 flex items-center gap-1 hover:underline">
+                Ver patrimônio <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+
+            <div className="mt-8 pt-6 border-t border-white/8 flex items-end justify-between">
+              <div>
+                <p className="text-xs text-muted-foreground">Variação desde o último fechamento</p>
+                {data?.netWorthChange !== null && data?.netWorthChange !== undefined ? (
+                  <p className={`text-2xl font-bold mt-1 ${changePositive ? "text-emerald-400" : "text-rose-400"}`}>
+                    {changePositive ? "+" : "-"}{formatCurrencyBRL(Math.abs(data.netWorthChange))}
+                    <span className="text-sm ml-2 font-semibold">{data.netWorthChangePct !== null ? `${data.netWorthChangePct.toFixed(1)}%` : ""}</span>
+                  </p>
+                ) : (
+                  <p className="text-sm text-muted-foreground mt-1">Sem fechamento anterior para comparar.</p>
+                )}
+              </div>
+              <div className="text-right">
+                <p className="text-xs text-muted-foreground">Resultado financeiro do mês</p>
+                <p className={`text-2xl font-bold mt-1 ${(data?.monthResult ?? 0) >= 0 ? "text-white" : "text-rose-400"}`}>
+                  {formatCurrencyBRL(data?.monthResult ?? 0)}
+                </p>
+              </div>
+            </div>
           </div>
 
-          <div className="glass-panel px-4 py-2 rounded-xl border border-rose-500/20 text-center">
-            <span className="text-[10px] text-muted-foreground uppercase block">Gastei</span>
-            <span className="text-sm font-bold text-rose-400">-{formatCurrencyBRL(data?.currentMonthExpenses || 0)}</span>
-          </div>
-
-          <div className="glass-panel px-4 py-2 rounded-xl border border-white/10 text-center">
-            <span className="text-[10px] text-muted-foreground uppercase block">Resultado</span>
-            <span className="text-sm font-bold text-white">{formatCurrencyBRL(data?.currentMonthResult || 0)}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Gráficos de Evolução & Alocação */}
-      {history.length > 0 ? (
-        <NetWorthCharts history={history} allocations={allocations} />
-      ) : (
-        <div className="glass-card p-8 rounded-2xl text-center text-xs text-muted-foreground space-y-2">
-          <p className="font-bold text-white">Histórico de Evolução Patrimonial</p>
-          <p>O gráfico de evolução histórica será disponibilizado após os primeiros registros do seu patrimônio.</p>
-        </div>
-      )}
-
-      {/* Feed de Transações Recentes (Feed Visual Independente) */}
-      {data?.recentTransactions && data.recentTransactions.length > 0 && (
-        <div className="glass-card p-6 rounded-2xl space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="font-bold text-white text-base">Últimas Movimentações</h3>
-            <Link href="/transacoes" className="text-xs text-emerald-400 hover:underline font-semibold">
-              Ver todas
-            </Link>
-          </div>
-
-          <div className="space-y-2.5">
-            {data.recentTransactions.map((tx) => {
-              const isCredit = tx.direction === "CREDIT";
-              const isTransfer = tx.transactionType === "TRANSFER";
-              const label = TRANSACTION_TYPE_LABELS[tx.transactionType] || tx.transactionType;
-
-              return (
-                <div key={tx.id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 text-xs">
-                  <div className="flex items-center gap-3">
-                    <div className={`p-2 rounded-lg ${isTransfer ? "bg-purple-500/20 text-purple-400" : isCredit ? "bg-emerald-500/20 text-emerald-400" : "bg-rose-500/20 text-rose-400"}`}>
-                      {isTransfer ? <Shuffle className="w-4 h-4" /> : isCredit ? <ArrowDownRight className="w-4 h-4" /> : <ArrowUpRight className="w-4 h-4" />}
-                    </div>
-                    <div>
-                      <p className="font-bold text-white">{tx.description}</p>
-                      <p className="text-[11px] text-muted-foreground">
-                        {tx.account.name} {tx.destinationAccount ? `➔ ${tx.destinationAccount.name}` : ""} • {label}
-                      </p>
-                    </div>
-                  </div>
-
-                  <span className={`font-bold text-sm ${isTransfer ? "text-purple-400" : isCredit ? "text-emerald-400" : "text-white"}`}>
-                    {isCredit ? "+" : "-"}{formatCurrencyBRL(tx.amount.toNumber())}
-                  </span>
+          <div className="col-span-4 rounded-3xl border border-white/8 bg-white/[0.025] p-6">
+            <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground font-semibold">Situação agora</p>
+            <div className="space-y-4 mt-5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><CircleDollarSign className="w-4 h-4" /> Entrou no mês</div>
+                <span className="text-sm font-bold text-white">{formatCurrencyBRL(data?.income ?? 0)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><Receipt className="w-4 h-4" /> Saiu no mês</div>
+                <span className="text-sm font-bold text-white">{formatCurrencyBRL(data?.expenses ?? 0)}</span>
+              </div>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground"><TrendingDown className="w-4 h-4" /> Dívidas ativas</div>
+                <span className="text-sm font-bold text-white">{data?.activeLiabilities ?? 0}</span>
+              </div>
+              <div className="pt-4 border-t border-white/8">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground"><AlertTriangle className="w-4 h-4" /> Revisões</div>
+                  <span className={`text-sm font-bold ${totalAlerts > 0 ? "text-amber-400" : "text-emerald-400"}`}>{totalAlerts}</span>
                 </div>
-              );
-            })}
+              </div>
+            </div>
           </div>
         </div>
-      )}
+
+        <div className="grid grid-cols-4 gap-4">
+          <MetricCard label="Disponível" value={formatCurrencyBRL(liquidAssets)} detail="contas correntes, poupança e dinheiro" href="/contas" icon={Wallet} />
+          <MetricCard label="Investimentos" value={formatCurrencyBRL(investmentAssets)} detail="ações, fundos, renda fixa e corretoras" href="/investimentos" icon={TrendingUp} />
+          <MetricCard label="Bens" value={formatCurrencyBRL(physicalAssets)} detail="imóveis, veículos e outros ativos" href="/meu-patrimonio" icon={Landmark} />
+          <MetricCard label="Passivos" value={formatCurrencyBRL(totalLiabilities)} detail="financiamentos, cartões e empréstimos" href="/dividas" icon={TrendingDown} danger />
+        </div>
+
+        {data?.history && data.history.length > 0 ? (
+          <NetWorthCharts history={data.history} allocations={allocations} />
+        ) : (
+          <div className="rounded-3xl border border-white/8 bg-white/[0.02] p-8 text-center">
+            <p className="font-semibold text-white">Evolução patrimonial</p>
+            <p className="text-sm text-muted-foreground mt-2">O gráfico aparecerá após os primeiros fechamentos patrimoniais.</p>
+          </div>
+        )}
+      </section>
     </div>
   );
 }
