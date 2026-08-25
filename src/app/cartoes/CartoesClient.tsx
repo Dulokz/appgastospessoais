@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Archive, CreditCard, Plus, X } from "lucide-react";
+import { Archive, CreditCard, Plus, Settings2, X } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { archiveAccount, createAccount } from "@/lib/actions/db-actions";
 import { formatCurrencyBRL } from "@/lib/decimal";
+import { updateCreditCardBillingCycle } from "@/lib/actions/credit-card-invoice-actions";
 
 type Card = {
   id: string;
@@ -33,6 +34,9 @@ export function CartoesClient({ initialCards }: { initialCards: Card[] }) {
   const [dueDay, setDueDay] = useState("5");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [cycleCard, setCycleCard] = useState<Card | null>(null);
+  const [cycleClosingDay, setCycleClosingDay] = useState("25");
+  const [cycleDueDay, setCycleDueDay] = useState("5");
 
   const totalDebt = cards.reduce((sum, card) => sum + Math.max(0, -card.balance), 0);
 
@@ -58,6 +62,17 @@ export function CartoesClient({ initialCards }: { initialCards: Card[] }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const saveCycle = async () => {
+    if (!cycleCard) return;
+    setLoading(true);
+    try {
+      await updateCreditCardBillingCycle({ cardId: cycleCard.id, closingDay: Number(cycleClosingDay), dueDay: Number(cycleDueDay) });
+      window.location.reload();
+    } catch (err: any) {
+      setError(err?.message || "Não foi possível atualizar o ciclo.");
+    } finally { setLoading(false); }
   };
 
   const archiveCard = async (id: string) => {
@@ -91,11 +106,23 @@ export function CartoesClient({ initialCards }: { initialCards: Card[] }) {
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center"><CreditCard className="w-5 h-5 text-rose-400" /></div>
                 <div className="flex-1"><h2 className="font-bold text-white">{card.name}</h2><p className="text-xs text-muted-foreground">Emitido por {card.institution} · fecha dia {card.closingDay || 25} · vence dia {card.dueDay || 5}</p></div>
-                <button onClick={() => archiveCard(card.id)} title="Arquivar cartão" className="p-2 rounded-xl bg-white/5 text-rose-300"><Archive className="w-4 h-4" /></button>
+                <div className="flex gap-2"><button onClick={() => { setCycleCard(card); setCycleClosingDay(String(card.closingDay || 25)); setCycleDueDay(String(card.dueDay || 5)); setError(""); }} title="Configurar fechamento e vencimento" className="p-2 rounded-xl bg-white/5 text-cyan-300"><Settings2 className="w-4 h-4" /></button><button onClick={() => archiveCard(card.id)} title="Arquivar cartão" className="p-2 rounded-xl bg-white/5 text-rose-300"><Archive className="w-4 h-4" /></button></div>
               </div>
               <div className="mt-5 pt-3 border-t border-white/10 flex items-end justify-between"><div><p className="text-[11px] text-muted-foreground">Dívida registrada</p><p className="text-2xl font-black text-rose-400">{formatCurrencyBRL(Math.max(0, -card.balance))}</p></div><Link href={`/cartoes/${card.id}`} className="px-3 py-2 rounded-xl bg-emerald-500 text-xs font-bold text-slate-950">Ver fatura</Link></div>
             </div>
           ))}
+        </div>
+      )}
+
+      {cycleCard && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-md bg-slate-950 border border-white/10 rounded-3xl p-6 space-y-4">
+            <div className="flex items-center justify-between"><div><p className="text-[11px] uppercase tracking-[0.14em] text-muted-foreground">Ciclo da fatura</p><h2 className="font-bold text-white">{cycleCard.name}</h2></div><button onClick={() => setCycleCard(null)}><X className="w-5 h-5 text-slate-400" /></button></div>
+            <p className="text-xs text-muted-foreground">A compra feita depois do fechamento entra na próxima fatura.</p>
+            <div className="grid grid-cols-2 gap-3"><div><label className="text-xs text-muted-foreground block mb-1">Fecha dia</label><input type="number" min="1" max="31" value={cycleClosingDay} onChange={(e) => setCycleClosingDay(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-white" /></div><div><label className="text-xs text-muted-foreground block mb-1">Vence dia</label><input type="number" min="1" max="31" value={cycleDueDay} onChange={(e) => setCycleDueDay(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-white" /></div></div>
+            {error && <p className="text-xs text-rose-200">{error}</p>}
+            <div className="flex justify-end gap-3"><button onClick={() => setCycleCard(null)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">Cancelar</button><button onClick={saveCycle} disabled={loading} className="px-4 py-2 rounded-xl bg-cyan-500 text-xs font-bold text-slate-950">{loading ? "Salvando..." : "Salvar ciclo"}</button></div>
+          </div>
         </div>
       )}
 
