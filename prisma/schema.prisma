@@ -86,6 +86,8 @@ model Account {
   lastSyncAt             DateTime?
   
   currency               String               @default("BRL")
+  creditCardClosingDay   Int?                 // 1..31; usado somente em cartões
+  creditCardDueDay       Int?                 // 1..31; usado somente em cartões
   active                 Boolean              @default(true)
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
@@ -277,6 +279,7 @@ model Transaction {
   transactionType      String               // INCOME, EXPENSE, TRANSFER, ASSET_PURCHASE, etc.
   categoryId           String?
   category             Category?            @relation(fields: [categoryId], references: [id])
+  cardInvoiceKey       String?              // Ex.: 2026-08; fatura a que pertence a compra/pagamento
   notes                String?
   
   // Idempotência e Integrações Futuras
@@ -294,6 +297,7 @@ model Transaction {
 
   @@unique([userId, accountId, externalId])
   @@unique([userId, accountId, importHash])
+  @@index([userId, cardInvoiceKey])
 }
 
 model TransactionAllocation {
