@@ -50,6 +50,8 @@ model User {
   netWorthSnapshots       NetWorthSnapshot[]
   accountBalanceSnapshots AccountBalanceSnapshot[]
   financialInstitutions   FinancialInstitution[]
+  recurringRules          RecurringRule[]
+  scheduledCommitments    ScheduledCommitment[]
 }
 
 model FinancialInstitution {
@@ -94,6 +96,8 @@ model Account {
   balanceSnapshots       AccountBalanceSnapshot[]
   investmentPositions    InvestmentPosition[]
   investmentEvents       InvestmentEvent[]
+  recurringRules          RecurringRule[]
+  scheduledCommitments    ScheduledCommitment[]
 }
 
 model Instrument {
@@ -254,6 +258,8 @@ model Category {
 
   transactions Transaction[]
   allocations  TransactionAllocation[]
+  recurringRules RecurringRule[]
+  scheduledCommitments ScheduledCommitment[]
 }
 
 model Transaction {
@@ -333,4 +339,52 @@ model NetWorthSnapshot {
   netWorth         Decimal  @db.Decimal(18, 4) // totalAssets - totalLiabilities
   liquidNetWorth   Decimal? @db.Decimal(18, 4) // Ativos líquidos + investimentos - dívidas CP
   createdAt        DateTime @default(now())
+}
+
+
+model RecurringRule {
+  id                   String               @id @default(uuid())
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId            String
+  account              Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId           String?
+  category             Category?            @relation(fields: [categoryId], references: [id])
+  description          String
+  amount               Decimal              @db.Decimal(18, 4)
+  frequency            String               @default("MONTHLY")
+  startDate            DateTime
+  endDate              DateTime?
+  active               Boolean              @default(true)
+  notes                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  scheduledCommitments ScheduledCommitment[]
+}
+
+model ScheduledCommitment {
+  id                   String          @id @default(uuid())
+  userId               String
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId            String
+  account              Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId           String?
+  category             Category?       @relation(fields: [categoryId], references: [id])
+  recurringRuleId      String?
+  recurringRule        RecurringRule?  @relation(fields: [recurringRuleId], references: [id], onDelete: Cascade)
+  description          String
+  amount               Decimal         @db.Decimal(18, 4)
+  dueDate              DateTime
+  status               String          @default("PENDING") // PENDING, POSTED, SKIPPED
+  sourceType           String          // RECURRING, INSTALLMENT
+  groupId              String?
+  installmentNumber    Int?
+  totalInstallments    Int?
+  transactionId        String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@unique([recurringRuleId, dueDate])
+  @@index([userId, status, dueDate])
 }
