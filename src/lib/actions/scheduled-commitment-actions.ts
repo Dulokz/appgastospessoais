@@ -12,6 +12,12 @@ function dateAtNoon(value: string) {
   return new Date(value + "T12:00:00");
 }
 
+function invoiceKey(date: Date, closingDay: number | null) {
+  const reference = new Date(date);
+  if (reference.getDate() > (closingDay || 25)) reference.setMonth(reference.getMonth() + 1);
+  return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+}
+
 function addMonths(date: Date, months: number) {
   const result = new Date(date);
   const day = result.getDate();
@@ -115,6 +121,7 @@ export async function confirmScheduledCommitment(id: string) {
         userId, accountId: commitment.accountId, date: commitment.dueDate,
         amount: commitment.amount, direction: "DEBIT", transactionType: "EXPENSE",
         categoryId: commitment.categoryId, description: commitment.description,
+        cardInvoiceKey: commitment.account.type === "CREDIT_CARD" ? invoiceKey(commitment.dueDate, commitment.account.creditCardClosingDay) : null,
         source: "SCHEDULED",
         allocations: { create: [{ allocationType: "EXPENSE", amount: commitment.amount, categoryId: commitment.categoryId }] },
       },
