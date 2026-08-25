@@ -66,7 +66,15 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
     } finally { setLoading(false); }
   };
 
-  const handleCorrectOpeningBalance = async (account: AccountItem) => {\n    const raw = prompt(`Corrigir o saldo inicial de ${account.name}. Isto NÃO cria receita/despesa; apenas corrige a posição de abertura.`, String(account.balance));\n    if (raw === null) return;\n    const value = Number(raw.replace(",", "."));\n    if (!Number.isFinite(value)) return alert("Informe um valor válido.");\n    try { await correctAccountOpeningBalance({ id: account.id, balance: value }); window.location.reload(); } catch (e: any) { alert(e.message || "Não foi possível corrigir."); }\n  };\n\n  const handleArchive = async (id: string) => {
+  const handleCorrectOpeningBalance = async (account: AccountItem) => {
+    const raw = prompt(`Corrigir o saldo inicial de ${account.name}. Isto NÃO cria receita/despesa; apenas corrige a posição de abertura.`, String(account.balance));
+    if (raw === null) return;
+    const value = Number(raw.replace(",", "."));
+    if (!Number.isFinite(value)) return alert("Informe um valor válido.");
+    try { await correctAccountOpeningBalance({ id: account.id, balance: value }); window.location.reload(); } catch (e: any) { alert(e.message || "Não foi possível corrigir."); }
+  };
+
+  const handleArchive = async (id: string) => {
     if (!confirm("Deseja arquivar este item?")) return;
     await archiveAccount(id);
     setAccounts(prev => prev.filter(a => a.id !== id));
