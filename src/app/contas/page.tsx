@@ -34,7 +34,7 @@ export default async function ContasPage() {
     institution: a.financialInstitution?.name || "Instituição manual",
     type: a.type,
     typeLabel: ACCOUNT_TYPE_LABELS[a.type] || a.type,
-    balance: a.calculatedBalance.toNumber(),
+    balance: a.calculatedBalance.toNumber(),\n    initialBalance: a.initialBalance.toNumber(),
     confirmed: a.confirmedBalance ? a.confirmedBalance.toNumber() : a.calculatedBalance.toNumber(),
     diff: a.reconciliationDiff.toNumber(),
   }));
