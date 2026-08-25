@@ -49,4 +49,5 @@ export async function payCreditCardInvoice(input: {
   });
 
   refresh();
+  revalidatePath(`/cartoes/${input.cardId}`);
 }
