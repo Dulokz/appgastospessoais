@@ -11,7 +11,7 @@ type Payment = { id: string; amount: number; date: string; sourceAccountName: st
 type Invoice = { key: string; purchases: Purchase[]; payments: Payment[] };
 type SourceAccount = { id: string; name: string; institution: string };
 
-export function FaturaClient({ cardName, institution, invoices, sourceAccounts }: { cardName: string; institution: string; invoices: Invoice[]; sourceAccounts: SourceAccount[] }) {
+export function FaturaClient({ cardId, cardName, institution, invoices, sourceAccounts }: { cardId: string; cardName: string; institution: string; invoices: Invoice[]; sourceAccounts: SourceAccount[] }) {
   const [selectedKey, setSelectedKey] = useState(invoices[0]?.key || "");
   const [isPayOpen, setIsPayOpen] = useState(false);
   const [sourceAccountId, setSourceAccountId] = useState(sourceAccounts[0]?.id || "");
@@ -29,7 +29,7 @@ export function FaturaClient({ cardName, institution, invoices, sourceAccounts }
     if (!selectedKey || !sourceAccountId) return setError("Selecione a conta que fará o pagamento.");
     setLoading(true); setError("");
     try {
-      await payCreditCardInvoice({ cardId: (window as any).__cardId, sourceAccountId, invoiceKey: selectedKey, amount: Number(amount.replace(",", ".")), paymentDate });
+      await payCreditCardInvoice({ cardId, sourceAccountId, invoiceKey: selectedKey, amount: Number(amount.replace(",", ".")), paymentDate });
       window.location.reload();
     } catch (err: any) {
       setError(err?.message || "Não foi possível pagar a fatura.");
