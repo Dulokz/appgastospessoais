@@ -230,6 +230,7 @@ export async function archiveAccount(id: string) {
   });
   revalidatePath("/");
   revalidatePath("/contas");
+  revalidatePath("/cartoes");
   revalidatePath("/investimentos");
   revalidatePath("/meu-patrimonio");
 }
