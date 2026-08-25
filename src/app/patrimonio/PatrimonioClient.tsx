@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
 import { createAssetWithEntryMethod } from "@/lib/actions/db-actions";
+import { archiveAsset, updateAssetProfile } from "@/lib/actions/financial-record-management-actions";
 import { CategorySelector } from "@/components/categories/CategorySelector";
 import {
   Building,
@@ -12,6 +13,8 @@ import {
   Briefcase,
   X,
   Building2,
+  Pencil,
+  Archive,
 } from "lucide-react";
 
 interface AssetData {
@@ -57,6 +60,29 @@ export function PatrimonioClient({ initialAssets, accounts, categories }: Patrim
   const totalPhysicalAssets = assets
     .filter((a) => a.considerInNetWorth)
     .reduce((acc, a) => acc + a.currentValue, 0);
+
+  const handleRevalueAsset = async (asset: AssetData) => {
+    const raw = prompt(`Novo valor de mercado para "${asset.name}"`, String(asset.currentValue));
+    if (raw === null) return;
+    const value = Number(raw.replace(",", "."));
+    if (!Number.isFinite(value) || value < 0) return alert("Informe um valor válido.");
+    try {
+      await updateAssetProfile({ id: asset.id, name: asset.name, category: asset.category, currentValue: value, considerInNetWorth: asset.considerInNetWorth });
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível reavaliar o bem.");
+    }
+  };
+
+  const handleArchiveAsset = async (asset: AssetData) => {
+    if (!confirm(`Arquivar "${asset.name}"? Ele deixará de compor o patrimônio atual, mas seu histórico será preservado.`)) return;
+    try {
+      await archiveAsset(asset.id);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível arquivar o bem.");
+    }
+  };
 
   const handleSaveAsset = async () => {
     if (!assetName.trim() || !currentValueStr) {
