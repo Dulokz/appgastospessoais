@@ -140,6 +140,7 @@ export async function createGuidedTransaction(input: {
 }) {
   const userId = await getDefaultUserId();
   const description = input.description.trim();
+  const categoryId = input.kind === "TRANSFER" || input.categoryId === "null" ? null : input.categoryId || null;
   if (!description) throw new Error("Dê um nome ao lançamento para reconhecê-lo depois.");
   if (!Number.isFinite(input.amount) || input.amount <= 0) throw new Error("Informe um valor maior que zero.");
   const date = new Date(`${input.date}T12:00:00`);
@@ -149,8 +150,8 @@ export async function createGuidedTransaction(input: {
     const account = await tx.account.findFirst({ where: { id: input.accountId, userId, active: true } });
     if (!account) throw new Error("Escolha uma conta ou cartão ativo.");
 
-    if (input.categoryId) {
-      const category = await tx.category.findFirst({ where: { id: input.categoryId, userId, deletedAt: null } });
+    if (categoryId) {
+      const category = await tx.category.findFirst({ where: { id: categoryId, userId, deletedAt: null } });
       if (!category) throw new Error("A categoria escolhida não é válida.");
     }
 
@@ -180,9 +181,9 @@ export async function createGuidedTransaction(input: {
         userId, accountId: account.id, amount: new Decimal(input.amount), date,
         direction: isExpense ? "DEBIT" : "CREDIT",
         transactionType: isExpense ? "EXPENSE" : "INCOME",
-        categoryId: input.categoryId || null, description, notes: input.notes?.trim() || null,
+        categoryId, description, notes: input.notes?.trim() || null,
         cardInvoiceKey: isExpense && account.type === "CREDIT_CARD" ? getInvoiceKeyForDate(date, account.creditCardClosingDay) : null,
-        allocations: { create: [{ allocationType: isExpense ? "EXPENSE" : "INCOME", amount: new Decimal(input.amount), categoryId: input.categoryId || null }] },
+        allocations: { create: [{ allocationType: isExpense ? "EXPENSE" : "INCOME", amount: new Decimal(input.amount), categoryId }] },
       },
     });
     await tx.account.update({
