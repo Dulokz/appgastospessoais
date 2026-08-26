@@ -3,7 +3,7 @@ import { db } from "@/lib/db";
 import { getDefaultUserId } from "@/lib/auth-user";
 import { formatCurrencyBRL } from "@/lib/decimal";
 import { MonthlyResultService } from "@/lib/services/monthly-result.service";
-import { ArrowRight, CalendarClock, CreditCard, Landmark, Receipt, TrendingDown, TrendingUp, Wallet } from "lucide-react";
+import { ArrowRight, CalendarClock, CreditCard, Receipt, TrendingDown, TrendingUp } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
