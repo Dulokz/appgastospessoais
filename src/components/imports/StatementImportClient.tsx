@@ -36,7 +36,7 @@ function textTag(block: string, tag: string) {
 }
 
 function parseOfx(text: string): Entry[] {
-  const blocks = text.match(/<STMTTRN>[\\s\\S]*?(?=<STMTTRN>|<\\/BANKTRANLIST>|<\\/CCSTMTRS>|$)/gi) || [];
+  const blocks = text.match(/<STMTTRN>[\s\S]*?(?=<STMTTRN>|<\/BANKTRANLIST>|<\/CCSTMTRS>|$)/gi) || [];
   return blocks.map((block, index) => {
     const amount = parseMoney(textTag(block, "TRNAMT"));
     return {
@@ -65,7 +65,7 @@ function parseCsv(text: string): Entry[] {
     }
     values.push(current.trim()); return values;
   };
-  const header = cells(lines[0]).map((value) => value.toLowerCase().normalize("NFD").replace(/[\\u0300-\\u036f]/g, ""));
+  const header = cells(lines[0]).map((value) => value.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
   const find = (...names: string[]) => header.findIndex((value) => names.some((name) => value.includes(name)));
   const dateIndex = find("data", "date");
   const descriptionIndex = find("descricao", "historico", "lancamento", "memo", "description");
