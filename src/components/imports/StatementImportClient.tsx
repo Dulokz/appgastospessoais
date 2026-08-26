@@ -6,7 +6,7 @@ import { commitStatementImport } from "@/lib/actions/statement-import-actions";
 
 type Account = { id: string; name: string; type: string; institutionName?: string | null };
 type Category = { id: string; name: string; parentName?: string | null };
-type Entry = { id: string; date: string; description: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean };
+type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
 
@@ -39,17 +39,22 @@ function parseOfx(text: string): Entry[] {
   const blocks = text.match(/<STMTTRN>[\s\S]*?(?=<STMTTRN>|<\/BANKTRANLIST>|<\/CCSTMTRS>|$)/gi) || [];
   return blocks.map((block, index) => {
     const amount = parseMoney(textTag(block, "TRNAMT"));
+    const name = textTag(block, "NAME") || "Lançamento importado";
+    const memo = textTag(block, "MEMO");
+    // OFX do Banco do Brasil: "03/01 14:22 Favorecido". O nome é o que importa na revisão.
+    const memoParts = memo.match(/^(\\d{2}\\/\\d{2})\\s+(\\d{2}:\\d{2})\\s+(.+)$/);
+    const counterpart = memoParts?.[3]?.trim();
+    const detail = memoParts ? `${memoParts[1]} às ${memoParts[2]}` : memo || undefined;
     return {
       id: textTag(block, "FITID") || "ofx-" + index,
       externalId: textTag(block, "FITID") || undefined,
       date: parseDate(textTag(block, "DTPOSTED")),
-      description: [textTag(block, "NAME"), textTag(block, "MEMO")]
-        .filter((value, position, values) => value && values.indexOf(value) === position)
-        .join(" · ") || "Lançamento importado",
+      description: counterpart ? `${name} · ${counterpart}` : name,
+      detail,
       signedAmount: amount,
       categoryId: "",
       // Linhas de saldo/fechamento não são fatos financeiros e não devem ser lançadas.
-      ignored: !Number.isFinite(amount) || Math.abs(amount) < 0.005 || /^(saldo|balance)/i.test(textTag(block, "NAME") || ""),
+      ignored: !Number.isFinite(amount) || Math.abs(amount) < 0.005 || /^(saldo|balance)/i.test(name),
     };
   }).filter((entry) => entry.date);
 }
@@ -188,7 +193,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
           {visible.map((entry) => <div key={entry.id} className={"grid gap-3 p-3 md:grid-cols-[24px_96px_1fr_190px_120px_32px] md:items-center " + (entry.ignored ? "opacity-45" : "")}>
             <input type="checkbox" checked={selected.includes(entry.id)} disabled={entry.ignored} onChange={() => toggle(entry.id)} />
             <span className="text-xs text-slate-400">{new Date(entry.date + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-            <div><p className="text-sm font-semibold text-white">{entry.description}</p><p className="text-[11px] text-muted-foreground">{entry.externalId ? "ID do banco: " + entry.externalId : "Sem identificador do banco"}</p></div>
+            <div><p className="text-sm font-semibold text-white">{entry.description}</p><p className="text-[11px] text-muted-foreground">{entry.detail ? entry.detail + " · " : ""}{entry.externalId ? "ID do banco: " + entry.externalId : "Sem identificador do banco"}</p></div>
             <select value={entry.categoryId} disabled={entry.ignored || account?.type === "CREDIT_CARD" && entry.signedAmount > 0} onChange={(event) => updateEntry(entry.id, { categoryId: event.target.value })} className="rounded-lg border border-white/10 bg-slate-800 px-2 py-2 text-xs text-white"><option value="">Sem categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.parentName ? category.parentName + " › " : ""}{category.name}</option>)}</select>
             <strong className={entry.signedAmount > 0 ? "text-emerald-300 text-sm text-right" : "text-rose-300 text-sm text-right"}>{entry.signedAmount > 0 ? "+" : "-"}{currency(entry.signedAmount)}</strong>
             <button type="button" onClick={() => updateEntry(entry.id, { ignored: !entry.ignored })} title={entry.ignored ? "Importar item" : "Ignorar item"} className={"rounded-lg p-2 " + (entry.ignored ? "bg-white/5 text-slate-400" : "bg-rose-500/10 text-rose-300")}>{entry.ignored ? <Check className="w-4 h-4"/> : <X className="w-4 h-4"/>}</button>
