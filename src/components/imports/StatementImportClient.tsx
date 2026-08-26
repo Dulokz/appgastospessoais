@@ -42,7 +42,7 @@ function parseOfx(text: string): Entry[] {
     const name = textTag(block, "NAME") || "Lançamento importado";
     const memo = textTag(block, "MEMO");
     // OFX do Banco do Brasil: "03/01 14:22 Favorecido". O nome é o que importa na revisão.
-    const memoParts = memo.match(/^(\\d{2}\\/\\d{2})\\s+(\\d{2}:\\d{2})\\s+(.+)$/);
+    const memoParts = memo.match(/^(\d{2}\/\d{2})\s+(\d{2}:\d{2})\s+(.+)$/);
     const counterpart = memoParts?.[3]?.trim();
     const detail = memoParts ? `${memoParts[1]} às ${memoParts[2]}` : memo || undefined;
     return {
