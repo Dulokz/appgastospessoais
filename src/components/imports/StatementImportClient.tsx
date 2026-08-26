@@ -135,7 +135,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
       const response = await commitStatementImport({
         accountId,
         sourceName: fileName,
-        entries: entries.map(({ id, ...entry }) => ({ ...entry, externalId: entry.externalId || id })),
+        entries: entries.map(({ id: _id, ...entry }) => ({ ...entry, externalId: entry.externalId || undefined })),
       });
       setResult(response);
       if (response.imported) setEntries((current) => current.map((entry) => ({ ...entry, ignored: true })));
