@@ -5,7 +5,7 @@ import { getDefaultUserId } from "@/lib/auth-user";
 import { Decimal } from "@/lib/decimal";
 import { revalidatePath } from "next/cache";
 
-const EDITABLE_TYPES = new Set(["INCOME", "EXPENSE", "REFUND", "INTEREST_INCOME", "INTEREST_EXPENSE", "FEE", "OTHER"]);
+const EDITABLE_TYPES = new Set(["INCOME", "EXPENSE", "REFUND", "INTEREST_INCOME", "INTEREST_EXPENSE", "FEE", "OTHER", "TRANSFER"]);
 
 function refreshViews() {
   ["/", "/transacoes", "/contas", "/resultado-mes", "/relatorios", "/meu-patrimonio"].forEach(revalidatePath);
@@ -15,7 +15,7 @@ async function getEditableTransaction(id: string) {
   const userId = await getDefaultUserId();
   const transaction = await db.transaction.findFirst({
     where: { id, userId, deletedAt: null },
-    include: { allocations: true, account: true },
+    include: { allocations: true, account: true, destinationAccount: true },
   });
   if (!transaction) throw new Error("Lançamento não encontrado.");
   if (!EDITABLE_TYPES.has(transaction.transactionType)) {
@@ -65,13 +65,16 @@ export async function updateSimpleTransaction(input: {
       },
     });
 
-    // Corrige somente a diferença. Ex.: R$ 10 alterado para R$ 15 reduz mais R$ 5 do saldo.
+    // Corrige somente a diferença. Em transferências, os dois lados mudam juntos.
     if (!amountDifference.isZero()) {
-      const balanceChange = transaction.direction === "CREDIT" ? amountDifference : amountDifference.negated();
-      await tx.account.update({
-        where: { id: transaction.accountId },
-        data: { calculatedBalance: { increment: balanceChange } },
-      });
+      if (transaction.transactionType === "TRANSFER") {
+        if (!transaction.destinationAccountId) throw new Error("Transferência sem conta de destino não pode ser corrigida automaticamente.");
+        await tx.account.update({ where: { id: transaction.accountId }, data: { calculatedBalance: { increment: amountDifference.negated() } } });
+        await tx.account.update({ where: { id: transaction.destinationAccountId }, data: { calculatedBalance: { increment: amountDifference } } });
+      } else {
+        const balanceChange = transaction.direction === "CREDIT" ? amountDifference : amountDifference.negated();
+        await tx.account.update({ where: { id: transaction.accountId }, data: { calculatedBalance: { increment: balanceChange } } });
+      }
     }
     if (transaction.allocations.length === 1) {
       await tx.transactionAllocation.update({
@@ -96,10 +99,16 @@ export async function deleteSimpleTransaction(id: string) {
   }
 
   await db.$transaction(async (tx) => {
-    const reverse = transaction.direction === "CREDIT"
-      ? new Decimal(transaction.amount).negated()
-      : new Decimal(transaction.amount);
-    await tx.account.update({ where: { id: transaction.accountId }, data: { calculatedBalance: { increment: reverse } } });
+    if (transaction.transactionType === "TRANSFER") {
+      if (!transaction.destinationAccountId) throw new Error("Transferência sem conta de destino não pode ser excluída automaticamente.");
+      await tx.account.update({ where: { id: transaction.accountId }, data: { calculatedBalance: { increment: new Decimal(transaction.amount) } } });
+      await tx.account.update({ where: { id: transaction.destinationAccountId }, data: { calculatedBalance: { decrement: new Decimal(transaction.amount) } } });
+    } else {
+      const reverse = transaction.direction === "CREDIT"
+        ? new Decimal(transaction.amount).negated()
+        : new Decimal(transaction.amount);
+      await tx.account.update({ where: { id: transaction.accountId }, data: { calculatedBalance: { increment: reverse } } });
+    }
     await tx.transaction.delete({ where: { id: transaction.id } });
   });
 
