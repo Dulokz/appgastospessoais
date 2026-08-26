@@ -15,14 +15,18 @@ export default async function InitialPositionAdjustmentPage() {
     db.account.findMany({
       where: { userId, active: true },
       orderBy: { createdAt: "asc" },
-      select: { id: true, name: true },
+      select: { id: true, name: true, financialInstitution: { select: { name: true } } },
     }),
   ]);
 
   return (
     <InitialPositionAdjustmentClient
       controlStartDate={user?.controlStartDate?.toISOString().split("T")[0] ?? null}
-      accounts={accounts}
+      accounts={accounts.map((account) => ({
+        id: account.id,
+        name: account.name,
+        institution: account.financialInstitution?.name || "Instituição manual",
+      }))}
     />
   );
 }
