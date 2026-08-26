@@ -90,8 +90,16 @@ function parseCsv(text: string): Entry[] {
 }
 
 function parsePdfText(text: string): Entry[] {
-  const pieces = Array.from(text.matchAll(/\(([^()]*)\)\s*(?:Tj|'|\])/g)).map((match) => match[1].replace(/\\([()\\])/g, "$1"));
-  return parseCsv(pieces.join("\n"));
+  const readable = Array.from(text.matchAll(/\(([^()]*)\)\s*(?:Tj|'|\])/g))
+    .map((match) => match[1].replace(/\\([()\\])/g, "$1"))
+    .join(" ");
+  const rows: Entry[] = [];
+  const expression = /(\d{2}[/-]\d{2}[/-]\d{2,4}|\d{4}[/-]\d{2}[/-]\d{2})\s+(.{3,}?)\s+([+-]?\s*(?:R\\$\s*)?[\d.]+(?:,\d{2})?)(?=\s+(?:\d{2}[/-]\d{2}[/-]\d{2,4}|\d{4}[/-]\d{2}[/-]\d{2})|$)/g;
+  for (const match of readable.matchAll(expression)) {
+    const signedAmount = parseMoney(match[3]);
+    rows.push({ id: "pdf-" + rows.length, date: parseDate(match[1]), description: match[2].trim(), signedAmount, categoryId: "", ignored: !Number.isFinite(signedAmount) });
+  }
+  return rows;
 }
 
 export function StatementImportClient({ accounts, categories }: { accounts: Account[]; categories: Category[] }) {
