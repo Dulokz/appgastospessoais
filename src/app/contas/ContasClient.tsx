@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
-import { Wallet, Plus, Building2, Scale, X, CreditCard, Pencil, Archive } from "lucide-react";
+import { Plus, Scale, X, CreditCard, Pencil, Archive, Landmark, Banknote } from "lucide-react";
 import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { ReconcileModal } from "@/components/accounts/ReconcileModal";
 import { createAccount, archiveAccount } from "@/lib/actions/db-actions";
@@ -52,6 +52,17 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
   const cards = accounts.filter(a => a.type === "CREDIT_CARD");
   const availableBalance = financialAccounts.reduce((acc, a) => acc + Math.max(0, a.balance), 0);
   const cardDebt = cards.reduce((acc, a) => acc + Math.max(0, -a.balance), 0);
+  const groupByInstitution = (items: AccountItem[]) => {
+    const groups = new Map<string, AccountItem[]>();
+    items.forEach((item) => groups.set(item.institution, [...(groups.get(item.institution) || []), item]));
+    return [...groups.entries()].map(([institution, items]) => ({
+      institution,
+      items,
+      total: items.reduce((sum, item) => sum + item.balance, 0),
+    })).sort((a, b) => a.institution.localeCompare(b.institution, "pt-BR"));
+  };
+  const financialGroups = groupByInstitution(financialAccounts);
+  const cardGroups = groupByInstitution(cards);
 
   const handleCreate = async () => {
     const inst = institutionName === "Outra instituição" ? customInstitution.trim() : institutionName;
@@ -122,14 +133,24 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
         </div>
       </div>
 
-      <section className="space-y-3">
-        <div><h2 className="text-sm font-bold text-white">Contas financeiras</h2><p className="text-xs text-muted-foreground">Bancos, dinheiro e contas de custódia. Produtos investidos ficam em “Investimentos”.</p></div>
+      <section className="space-y-4">
+        <div><h2 className="text-sm font-bold text-white">Contas financeiras</h2><p className="text-xs text-muted-foreground">Organizadas por instituição. Produtos investidos continuam em “Investimentos”.</p></div>
         {financialAccounts.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">Nenhuma conta cadastrada.</div> : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {financialAccounts.map(account => (
-              <div key={account.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-5 space-y-4">
-                <div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-white/5 flex items-center justify-center"><Building2 className="w-5 h-5 text-emerald-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-sm">{account.name}</h3><p className="text-xs text-muted-foreground">{account.institution} · {account.typeLabel}</p></div></div>
-                <div className="pt-3 border-t border-white/8 flex items-end justify-between"><div><p className="text-[11px] text-muted-foreground">Saldo calculado</p><p className={`text-xl font-black ${account.balance < 0 ? "text-rose-400" : "text-white"}`}>{formatCurrencyBRL(account.balance)}</p></div><div className="flex gap-2"><button onClick={() => { setOpeningAdjustment(account); setNewOpeningBalance(String(account.initialBalance)); }} title="Corrigir saldo inicial" className="p-2 rounded-xl bg-white/5 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleArchive(account.id)} title="Arquivar conta" className="p-2 rounded-xl bg-white/5 text-rose-300"><Archive className="w-3.5 h-3.5" /></button><button onClick={() => setReconcileAccount({ id: account.id, name: account.name, calculatedBalance: account.balance })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-emerald-400"><Scale className="w-3.5 h-3.5" />Conferir</button></div></div>
+          <div className="space-y-4">
+            {financialGroups.map(group => (
+              <div key={group.institution} className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.025]">
+                <div className="flex flex-col gap-3 border-b border-white/10 bg-white/[0.025] px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-center gap-3"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-emerald-500/10">{group.items.some(item => item.type === "CASH") ? <Banknote className="h-5 w-5 text-emerald-400" /> : <Landmark className="h-5 w-5 text-emerald-400" />}</div><div><h3 className="text-sm font-black text-white">{group.institution}</h3><p className="text-xs text-muted-foreground">{group.items.length} {group.items.length === 1 ? "conta" : "contas"}</p></div></div>
+                  <div className="sm:text-right"><p className="text-[11px] text-muted-foreground">Total nesta instituição</p><p className={`text-lg font-black ${group.total < 0 ? "text-rose-400" : "text-white"}`}>{formatCurrencyBRL(group.total)}</p></div>
+                </div>
+                <div className="grid grid-cols-1 divide-y divide-white/8 md:grid-cols-2 md:divide-x md:divide-y-0">
+                  {group.items.map(account => (
+                    <div key={account.id} className="p-5">
+                      <div className="flex items-start justify-between gap-3"><div><h4 className="text-sm font-bold text-white">{account.name}</h4><p className="mt-1 text-xs text-muted-foreground">{account.typeLabel}</p></div><div className="text-right"><p className="text-[11px] text-muted-foreground">Saldo calculado</p><p className={`mt-1 text-xl font-black ${account.balance < 0 ? "text-rose-400" : "text-white"}`}>{formatCurrencyBRL(account.balance)}</p></div></div>
+                      <div className="mt-4 flex flex-wrap justify-end gap-2"><button onClick={() => { setOpeningAdjustment(account); setNewOpeningBalance(String(account.initialBalance)); }} title="Corrigir saldo inicial" className="p-2 rounded-xl bg-white/5 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button><button onClick={() => handleArchive(account.id)} title="Arquivar conta" className="p-2 rounded-xl bg-white/5 text-rose-300"><Archive className="w-3.5 h-3.5" /></button><button onClick={() => setReconcileAccount({ id: account.id, name: account.name, calculatedBalance: account.balance })} className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 text-xs font-semibold text-emerald-400"><Scale className="w-3.5 h-3.5" />Conferir</button></div>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -139,12 +160,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
       <section className="space-y-3">
         <div><h2 className="text-sm font-bold text-white">Cartões de crédito</h2><p className="text-xs text-muted-foreground">Compras aumentam a dívida; pagar a fatura reduz a dívida sem gerar gasto novamente.</p></div>
         {cards.length === 0 ? <div className="rounded-2xl border border-dashed border-white/10 p-6 text-sm text-muted-foreground">Nenhum cartão cadastrado. Adicione um para lançar compras no crédito.</div> : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {cards.map(card => {
-              const debt = Math.max(0, -card.balance);
-              return <div key={card.id} className="rounded-2xl border border-white/10 bg-white/[0.025] p-5"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-rose-500/8 flex items-center justify-center"><CreditCard className="w-5 h-5 text-rose-400" /></div><div className="flex-1"><h3 className="font-bold text-white text-sm">{card.name}</h3><p className="text-xs text-muted-foreground">{card.institution}</p></div></div><div className="mt-5 pt-3 border-t border-white/8"><p className="text-[11px] text-muted-foreground">Dívida registrada</p><p className="text-2xl font-black text-rose-400">{formatCurrencyBRL(debt)}</p></div></div>;
-            })}
-          </div>
+          <div className="space-y-4">{cardGroups.map(group => <div key={group.institution} className="rounded-2xl border border-rose-500/15 bg-rose-500/[0.025] p-5"><div className="mb-4 flex items-center gap-3 border-b border-white/8 pb-4"><div className="flex h-10 w-10 items-center justify-center rounded-xl bg-rose-500/10"><CreditCard className="h-5 w-5 text-rose-400" /></div><div><h3 className="text-sm font-black text-white">{group.institution}</h3><p className="text-xs text-muted-foreground">Cartões desta instituição</p></div></div><div className="grid grid-cols-1 gap-3 md:grid-cols-2">{group.items.map(card => <div key={card.id} className="rounded-xl bg-white/[0.035] px-4 py-3"><p className="text-sm font-bold text-white">{card.name}</p><div className="mt-2 flex items-end justify-between"><p className="text-xs text-muted-foreground">Dívida registrada</p><p className="text-lg font-black text-rose-400">{formatCurrencyBRL(Math.max(0, -card.balance))}</p></div></div>)}</div></div>)}</div>
         )}
       </section>
 
