@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
+import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { INSTRUMENT_TYPE_LABELS } from "@/lib/translations";
 import { InstitutionConsolidationService, AccountItemData, InvestmentPositionItemData } from "@/lib/services/institution-consolidation.service";
 import { AssetClassService } from "@/lib/services/asset-class.service";
@@ -15,7 +16,7 @@ import {
   TrendingUp,
   X,
   Edit2,
-  Gift,
+  ArrowRightLeft,
 } from "lucide-react";
 
 interface FormattedEvent {
@@ -74,6 +75,7 @@ export function InvestimentosClient({
 
   // Update Value Form State
   const [newValueStr, setNewValueStr] = useState("");
+  const [updateDate, setUpdateDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [updateNotes, setUpdateNotes] = useState("");
 
   // Record Event Form State
@@ -103,6 +105,13 @@ export function InvestimentosClient({
 
   const toggleInst = (id: string) => {
     setExpandedInst((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const openValueUpdate = (position: InvestmentPositionItemData) => {
+    setIsUpdateValueOpen(position);
+    setNewValueStr(String(position.currentValue));
+    setUpdateDate(new Date().toISOString().slice(0, 10));
+    setUpdateNotes("");
   };
 
   const handleCreatePosition = async () => {
@@ -135,13 +144,14 @@ export function InvestimentosClient({
   };
 
   const handleUpdateValue = async () => {
-    if (!isUpdateValueOpen || !newValueStr) return;
+    if (!isUpdateValueOpen || !newValueStr || !updateDate) return;
     setLoading(true);
 
     try {
       await updatePositionValue({
         positionId: isUpdateValueOpen.id,
-        newCurrentValue: parseFloat(newValueStr),
+        newCurrentValue: Number(newValueStr),
+        date: updateDate,
         notes: updateNotes,
       });
 
@@ -337,19 +347,18 @@ export function InvestimentosClient({
                                 </div>
 
                                 <button
-                                  onClick={() => setIsUpdateValueOpen(pos)}
-                                  className="p-2 rounded-xl bg-white/5 hover:bg-white/10 text-cyan-400"
-                                  title="Atualizar Valor Manual"
+                                  onClick={() => openValueUpdate(pos)}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-cyan-500/20 bg-cyan-500/10 px-3 py-2 font-semibold text-cyan-300 hover:bg-cyan-500/20"
+                                  title="Informar o novo saldo deste investimento"
                                 >
-                                  <Edit2 className="w-4 h-4" />
+                                  <Edit2 className="w-3.5 h-3.5" /> Atualizar saldo
                                 </button>
-
                                 <button
                                   onClick={() => setIsRecordEventOpen(pos)}
-                                  className="p-2 rounded-xl bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400"
-                                  title="Registrar Provento / Aporte"
+                                  className="inline-flex items-center gap-1.5 rounded-xl bg-white/5 px-3 py-2 font-semibold text-slate-300 hover:bg-white/10"
+                                  title="Registrar aporte, resgate ou dinheiro recebido"
                                 >
-                                  <Gift className="w-4 h-4" />
+                                  <ArrowRightLeft className="w-3.5 h-3.5" /> Movimentar
                                 </button>
                               </div>
                             </div>
@@ -517,33 +526,27 @@ export function InvestimentosClient({
         </div>
       )}
 
-      {/* Modal Atualizar Valor Manual */}
+      {/* Modal Atualizar saldo informado */}
       {isUpdateValueOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md glass-panel bg-slate-900 border border-white/10 rounded-3xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h2 className="text-base font-bold text-white">Atualizar Valor da Posição</h2>
+              <div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-cyan-300">Atualização de investimento</p><h2 className="text-base font-bold text-white">Informar saldo do banco</h2></div>
               <button onClick={() => setIsUpdateValueOpen(null)} className="p-1 rounded-xl text-muted-foreground hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-muted-foreground">
-              Produto: <span className="text-white font-bold">{isUpdateValueOpen.instrumentName}</span>
-            </p>
+            <div className="rounded-xl border border-cyan-500/15 bg-cyan-500/5 p-3 text-xs text-slate-300">Use quando o banco/corretora informar o valor atualizado. Isto atualiza o patrimônio e registra a variação, mas <strong className="text-white">não cria dinheiro na conta</strong>.</div>
+            <p className="text-xs text-muted-foreground">Produto: <span className="font-bold text-white">{isUpdateValueOpen.instrumentName}</span></p>
 
-            <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Novo Valor Atual (R$)</label>
-              <input
-                type="number"
-                step="0.01"
-                placeholder={isUpdateValueOpen.currentValue.toString()}
-                value={newValueStr}
-                onChange={(e) => setNewValueStr(e.target.value)}
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-xl font-bold text-white focus:outline-none focus:border-cyan-500"
-                autoFocus
-              />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div><label className="mb-1 block text-xs font-semibold text-muted-foreground">Data do saldo informado</label><input type="date" value={updateDate} onChange={(e) => setUpdateDate(e.target.value)} className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-500" /></div>
+              <div><label className="mb-1 block text-xs font-semibold text-muted-foreground">Saldo informado pelo banco</label><CurrencyInput value={newValueStr} onChangeValue={(value) => setNewValueStr(String(value))} className="py-2.5 text-base" autoFocus /></div>
             </div>
+
+            {Number.isFinite(Number(newValueStr)) && <div className="grid grid-cols-2 gap-3 rounded-xl bg-white/[0.035] p-3 text-xs"><div><p className="text-muted-foreground">Saldo anterior</p><p className="mt-1 font-bold text-white">{formatCurrencyBRL(isUpdateValueOpen.currentValue)}</p></div><div><p className="text-muted-foreground">Variação no período</p><p className={`mt-1 font-bold ${Number(newValueStr) - Number(isUpdateValueOpen.currentValue) >= 0 ? "text-emerald-400" : "text-rose-400"}`}>{Number(newValueStr) - Number(isUpdateValueOpen.currentValue) >= 0 ? "+" : ""}{formatCurrencyBRL(Number(newValueStr) - Number(isUpdateValueOpen.currentValue))}</p></div></div>}
+            <div><label className="mb-1 block text-xs font-semibold text-muted-foreground">Observação (opcional)</label><input value={updateNotes} onChange={(e) => setUpdateNotes(e.target.value)} placeholder="Ex.: saldo informado no extrato de agosto" className="w-full rounded-xl border border-white/10 bg-white/5 px-3 py-2.5 text-sm text-white outline-none focus:border-cyan-500" /></div>
 
             <div className="flex justify-end gap-3 pt-3">
               <button onClick={() => setIsUpdateValueOpen(null)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">
@@ -554,26 +557,26 @@ export function InvestimentosClient({
                 disabled={loading || !newValueStr}
                 className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-xs font-bold text-white shadow-lg shadow-cyan-500/20"
               >
-                {loading ? "Atualizando..." : "Salvar Novo Valor"}
+                {loading ? "Salvando..." : "Confirmar saldo informado"}
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Modal Registrar Provento / Aporte / Resgate */}
+      {/* Modal Movimentar investimento */}
       {isRecordEventOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
           <div className="w-full max-w-md glass-panel bg-slate-900 border border-white/10 rounded-3xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h2 className="text-base font-bold text-white">Registrar Provento ou Movimentação</h2>
+              <div><p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-400">Movimentação de dinheiro</p><h2 className="text-base font-bold text-white">Aportar, resgatar ou receber</h2></div>
               <button onClick={() => setIsRecordEventOpen(null)} className="p-1 rounded-xl text-muted-foreground hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Tipo de Evento</label>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1">O que aconteceu?</label>
               <select
                 value={eventType}
                 onChange={(e) => setEventType(e.target.value as any)}
