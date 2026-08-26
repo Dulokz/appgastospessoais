@@ -227,7 +227,7 @@ export async function createAccount(data: {
     revalidatePath("/cartoes");
     revalidatePath("/investimentos");
     revalidatePath("/meu-patrimonio");
-    return newAccount;
+    return { id: newAccount.id };
   });
 }
 
@@ -972,7 +972,7 @@ export async function createInvestmentPosition(data: {
     revalidatePath("/investimentos");
     revalidatePath("/contas");
     revalidatePath("/meu-patrimonio");
-    return position;
+    return { id: position.id };
   });
 }
 
@@ -1032,7 +1032,7 @@ export async function updatePositionValue(data: {
     revalidatePath("/investimentos");
     revalidatePath("/relatorios");
     revalidatePath("/meu-patrimonio");
-    return updated;
+    return { id: updated.id, currentValue: updated.currentValue.toNumber() };
   });
 }
 
@@ -1192,6 +1192,6 @@ export async function recordInvestmentEvent(data: {
     revalidatePath("/transacoes");
     revalidatePath("/resultado-mes");
     revalidatePath("/meu-patrimonio");
-    return event;
+    return { id: event.id };
   });
 }
