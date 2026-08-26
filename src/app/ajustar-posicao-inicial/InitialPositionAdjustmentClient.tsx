@@ -16,7 +16,7 @@ import { ASSET_CATEGORY_GROUPS, ASSET_CATEGORY_OPTIONS } from "@/lib/asset-categ
 
 interface Props {
   controlStartDate: string | null;
-  accounts: { id: string; name: string }[];
+  accounts: { id: string; name: string; institution: string }[];
 }
 
 type Kind = "ACCOUNT" | "INVESTMENT" | "ASSET" | "LIABILITY";
@@ -185,7 +185,7 @@ export function InitialPositionAdjustmentClient({ controlStartDate, accounts }: 
 
               {kind === "INVESTMENT" && (
                 <div className="grid md:grid-cols-2 gap-4">
-                  <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Custódia</label><select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">{accounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}</select></div>
+                  <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Conta de custódia</label><select value={accountId} onChange={(e) => setAccountId(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">{accounts.map(a => <option key={a.id} value={a.id}>{a.name} · {a.institution}</option>)}</select><p className="mt-1.5 text-[11px] text-muted-foreground">Escolha onde este investimento fica guardado.</p></div>
                   <div><label className="text-xs text-muted-foreground font-semibold block mb-1">Tipo</label><select value={subtype} onChange={(e) => setSubtype(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white"><option value="STOCK">Ação</option><option value="FII">FII</option><option value="FIXED_INCOME">Renda fixa</option><option value="INVESTMENT_FUND">Fundo</option><option value="CRYPTO">Cripto</option><option value="OTHER">Outro</option></select></div>
                 </div>
               )}
