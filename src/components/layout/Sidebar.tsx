@@ -16,6 +16,7 @@ import {
   BarChart3,
   History,
   CalendarClock,
+  Upload,
 } from "lucide-react";
 import { clsx } from "clsx";
 
@@ -29,6 +30,7 @@ const navItems = [
   { name: "Investimentos", href: "/investimentos", icon: TrendingUp },
   { name: "Dívidas", href: "/dividas", icon: TrendingDown },
   { name: "Transações", href: "/transacoes", icon: ArrowRightLeft },
+  { name: "Importar extrato", href: "/importar", icon: Upload },
   { name: "Relatórios", href: "/relatorios", icon: BarChart3 },
   { name: "Corrigir posição inicial", href: "/ajustar-posicao-inicial", icon: History },
   { name: "Configurações", href: "/configuracoes", icon: Settings },
