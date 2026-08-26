@@ -48,7 +48,7 @@ export async function payCreditCardInvoice(input: {
       .filter((item) => belongsToInvoice(item) && item.accountId === card.id && item.direction === "DEBIT" && item.transactionType !== "CARD_PAYMENT")
       .reduce((total, item) => total.add(item.amount), new Decimal(0));
     const paidTotal = invoiceTransactions
-      .filter((item) => belongsToInvoice(item) && item.transactionType === "CARD_PAYMENT" && item.destinationAccountId === card.id)
+      .filter((item) => belongsToInvoice(item) && item.transactionType === "CARD_PAYMENT" && (item.destinationAccountId === card.id || (item.accountId === card.id && item.direction === "CREDIT")))
       .reduce((total, item) => total.add(item.amount), new Decimal(0));
     const openAmount = purchasesTotal.minus(paidTotal);
     if (openAmount.lte(0)) throw new Error("Esta fatura já está quitada.");
