@@ -979,9 +979,12 @@ export async function createInvestmentPosition(data: {
 export async function updatePositionValue(data: {
   positionId: string;
   newCurrentValue: number;
+  date: string;
   notes?: string;
 }) {
   const userId = await getDefaultUserId();
+  const referenceDate = new Date(`${data.date}T12:00:00`);
+  if (Number.isNaN(referenceDate.getTime())) throw new Error("Informe uma data válida para a atualização.");
 
   return db.$transaction(async (tx) => {
     const position = await tx.investmentPosition.findFirst({
@@ -998,7 +1001,7 @@ export async function updatePositionValue(data: {
       where: { id: data.positionId },
       data: {
         currentValue: data.newCurrentValue,
-        lastPriceAt: new Date(),
+        lastPriceAt: referenceDate,
       },
     });
 
@@ -1007,6 +1010,7 @@ export async function updatePositionValue(data: {
         investmentPositionId: position.id,
         quantity: position.quantity,
         currentValue: data.newCurrentValue,
+        date: referenceDate,
         source: "MANUAL",
       },
     });
@@ -1018,7 +1022,8 @@ export async function updatePositionValue(data: {
           investmentPositionId: position.id,
           type: eventType,
           amount: Math.abs(diff),
-          notes: data.notes || "Atualização manual de valorização/desvalorização",
+          date: referenceDate,
+          notes: data.notes || `Saldo informado em ${referenceDate.toLocaleDateString("pt-BR")}`,
         },
       });
     }
