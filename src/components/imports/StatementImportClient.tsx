@@ -43,10 +43,13 @@ function parseOfx(text: string): Entry[] {
       id: textTag(block, "FITID") || "ofx-" + index,
       externalId: textTag(block, "FITID") || undefined,
       date: parseDate(textTag(block, "DTPOSTED")),
-      description: textTag(block, "NAME") || textTag(block, "MEMO") || "Lançamento importado",
+      description: [textTag(block, "NAME"), textTag(block, "MEMO")]
+        .filter((value, position, values) => value && values.indexOf(value) === position)
+        .join(" · ") || "Lançamento importado",
       signedAmount: amount,
       categoryId: "",
-      ignored: !Number.isFinite(amount),
+      // Linhas de saldo/fechamento não são fatos financeiros e não devem ser lançadas.
+      ignored: !Number.isFinite(amount) || Math.abs(amount) < 0.005 || /^(saldo|balance)/i.test(textTag(block, "NAME") || ""),
     };
   }).filter((entry) => entry.date);
 }
