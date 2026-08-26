@@ -15,7 +15,7 @@ async function getEditableTransaction(id: string) {
   const userId = await getDefaultUserId();
   const transaction = await db.transaction.findFirst({
     where: { id, userId, deletedAt: null },
-    include: { allocations: true },
+    include: { allocations: true, account: true },
   });
   if (!transaction) throw new Error("Lançamento não encontrado.");
   if (!EDITABLE_TYPES.has(transaction.transactionType)) {
@@ -45,21 +45,38 @@ export async function updateSimpleTransaction(input: {
     if (!category) throw new Error("Categoria inválida.");
   }
 
+  const newAmount = new Decimal(input.amount);
+  const newDate = new Date(input.date + "T12:00:00");
+  const amountDifference = newAmount.minus(transaction.amount);
+
   await db.$transaction(async (tx) => {
     await tx.transaction.update({
       where: { id: transaction.id },
       data: {
         description: input.description.trim(),
-        amount: new Decimal(input.amount),
-        date: new Date(input.date + "T12:00:00"),
+        amount: newAmount,
+        date: newDate,
         categoryId: input.categoryId || null,
         notes: input.notes?.trim() || null,
+        // Uma despesa no cartão pertence à fatura definida pela data da compra.
+        cardInvoiceKey: transaction.account.type === "CREDIT_CARD" && transaction.direction === "DEBIT"
+          ? getInvoiceKeyForDate(newDate, transaction.account.creditCardClosingDay)
+          : transaction.cardInvoiceKey,
       },
     });
+
+    // Corrige somente a diferença. Ex.: R$ 10 alterado para R$ 15 reduz mais R$ 5 do saldo.
+    if (!amountDifference.isZero()) {
+      const balanceChange = transaction.direction === "CREDIT" ? amountDifference : amountDifference.negated();
+      await tx.account.update({
+        where: { id: transaction.accountId },
+        data: { calculatedBalance: { increment: balanceChange } },
+      });
+    }
     if (transaction.allocations.length === 1) {
       await tx.transactionAllocation.update({
         where: { id: transaction.allocations[0].id },
-        data: { amount: new Decimal(input.amount), categoryId: input.categoryId || null },
+        data: { amount: newAmount, categoryId: input.categoryId || null },
       });
     }
     if (transaction.allocations.length > 1) {
@@ -68,6 +85,8 @@ export async function updateSimpleTransaction(input: {
   });
 
   refreshViews();
+  revalidatePath("/cartoes");
+  if (transaction.account.type === "CREDIT_CARD") revalidatePath(`/cartoes/${transaction.accountId}`);
 }
 
 export async function deleteSimpleTransaction(id: string) {
@@ -85,6 +104,8 @@ export async function deleteSimpleTransaction(id: string) {
   });
 
   refreshViews();
+  revalidatePath("/cartoes");
+  if (transaction.account.type === "CREDIT_CARD") revalidatePath(`/cartoes/${transaction.accountId}`);
 }
 
 
