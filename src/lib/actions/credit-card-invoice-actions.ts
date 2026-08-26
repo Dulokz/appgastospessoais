@@ -9,6 +9,12 @@ function refresh() {
   ["/", "/contas", "/cartoes", "/transacoes", "/resultado-mes", "/meu-patrimonio"].forEach(revalidatePath);
 }
 
+function invoiceKeyForDate(date: Date, closingDay?: number | null) {
+  const reference = new Date(date);
+  if (reference.getDate() > (closingDay || 25)) reference.setMonth(reference.getMonth() + 1);
+  return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+}
+
 export async function payCreditCardInvoice(input: {
   cardId: string;
   sourceAccountId: string;
@@ -32,16 +38,17 @@ export async function payCreditCardInvoice(input: {
     const invoiceTransactions = await tx.transaction.findMany({
       where: {
         userId,
-        cardInvoiceKey: input.invoiceKey,
         OR: [{ accountId: card.id }, { destinationAccountId: card.id }],
       },
-      select: { amount: true, transactionType: true, accountId: true, destinationAccountId: true, direction: true },
+      select: { amount: true, transactionType: true, accountId: true, destinationAccountId: true, direction: true, date: true, cardInvoiceKey: true },
     });
+    const belongsToInvoice = (item: typeof invoiceTransactions[number]) =>
+      (item.cardInvoiceKey || invoiceKeyForDate(item.date, card.creditCardClosingDay)) === input.invoiceKey;
     const purchasesTotal = invoiceTransactions
-      .filter((item) => item.accountId === card.id && item.direction === "DEBIT" && item.transactionType !== "CARD_PAYMENT")
+      .filter((item) => belongsToInvoice(item) && item.accountId === card.id && item.direction === "DEBIT" && item.transactionType !== "CARD_PAYMENT")
       .reduce((total, item) => total.add(item.amount), new Decimal(0));
     const paidTotal = invoiceTransactions
-      .filter((item) => item.transactionType === "CARD_PAYMENT" && item.destinationAccountId === card.id)
+      .filter((item) => belongsToInvoice(item) && item.transactionType === "CARD_PAYMENT" && item.destinationAccountId === card.id)
       .reduce((total, item) => total.add(item.amount), new Decimal(0));
     const openAmount = purchasesTotal.minus(paidTotal);
     if (openAmount.lte(0)) throw new Error("Esta fatura já está quitada.");
