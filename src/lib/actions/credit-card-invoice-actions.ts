@@ -29,6 +29,26 @@ export async function payCreditCardInvoice(input: {
     if (!source) throw new Error("Conta de pagamento não encontrada.");
     if (source.type === "CREDIT_CARD") throw new Error("A fatura deve ser paga por uma conta, não por outro cartão.");
 
+    const invoiceTransactions = await tx.transaction.findMany({
+      where: {
+        userId,
+        cardInvoiceKey: input.invoiceKey,
+        OR: [{ accountId: card.id }, { destinationAccountId: card.id }],
+      },
+      select: { amount: true, transactionType: true, accountId: true, destinationAccountId: true, direction: true },
+    });
+    const purchasesTotal = invoiceTransactions
+      .filter((item) => item.accountId === card.id && item.direction === "DEBIT" && item.transactionType !== "CARD_PAYMENT")
+      .reduce((total, item) => total.add(item.amount), new Decimal(0));
+    const paidTotal = invoiceTransactions
+      .filter((item) => item.transactionType === "CARD_PAYMENT" && item.destinationAccountId === card.id)
+      .reduce((total, item) => total.add(item.amount), new Decimal(0));
+    const openAmount = purchasesTotal.minus(paidTotal);
+    if (openAmount.lte(0)) throw new Error("Esta fatura já está quitada.");
+    if (new Decimal(input.amount).gt(openAmount)) {
+      throw new Error(`O pagamento excede o saldo aberto da fatura (${openAmount.toFixed(2)}).`);
+    }
+
     await tx.transaction.create({
       data: {
         userId,
