@@ -1036,6 +1036,60 @@ export async function updatePositionValue(data: {
   });
 }
 
+/**
+ * Exclui uma posição de investimento e todos os registros que só existem por
+ * causa dela. Movimentos financeiros vinculados também são desfeitos para que
+ * conta, patrimônio, histórico e relatórios não fiquem divergentes.
+ */
+export async function deleteInvestmentPosition(positionId: string) {
+  const userId = await getDefaultUserId();
+
+  await db.$transaction(async (tx) => {
+    const position = await tx.investmentPosition.findFirst({
+      where: { id: positionId, userId },
+      include: {
+        events: {
+          select: { transactionId: true },
+        },
+      },
+    });
+
+    if (!position) throw new Error("Investimento não encontrado ou não pertence ao usuário.");
+
+    const transactionIds = [...new Set(position.events.map((event) => event.transactionId).filter(Boolean))] as string[];
+    const transactions = transactionIds.length
+      ? await tx.transaction.findMany({
+          where: { id: { in: transactionIds }, userId },
+          select: { id: true, accountId: true, amount: true, direction: true },
+        })
+      : [];
+
+    // A relação com Transaction é opcional e não deve impedir a remoção.
+    await tx.investmentEvent.deleteMany({ where: { investmentPositionId: position.id } });
+
+    for (const transaction of transactions) {
+      await tx.account.update({
+        where: { id: transaction.accountId },
+        data: {
+          calculatedBalance: transaction.direction === "DEBIT"
+            ? { increment: transaction.amount }
+            : { decrement: transaction.amount },
+        },
+      });
+    }
+
+    if (transactionIds.length) {
+      await tx.transaction.deleteMany({ where: { id: { in: transactionIds }, userId } });
+    }
+
+    // Snapshots remanescentes são removidos pela relação em cascata.
+    await tx.investmentPosition.delete({ where: { id: position.id } });
+  });
+
+  ["/", "/contas", "/investimentos", "/meu-patrimonio", "/patrimonio", "/transacoes", "/resultado-mes", "/relatorios"].forEach(revalidatePath);
+  return { id: positionId };
+}
+
 export async function recordInvestmentEvent(data: {
   positionId: string;
   eventType: "CONTRIBUTION" | "WITHDRAWAL" | "INCOME_RECEIVED" | "DIVIDEND" | "JCP";
