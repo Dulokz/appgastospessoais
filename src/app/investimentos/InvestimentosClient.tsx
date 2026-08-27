@@ -6,7 +6,7 @@ import { CurrencyInput } from "@/components/ui/CurrencyInput";
 import { INSTRUMENT_TYPE_LABELS } from "@/lib/translations";
 import { InstitutionConsolidationService, AccountItemData, InvestmentPositionItemData } from "@/lib/services/institution-consolidation.service";
 import { AssetClassService } from "@/lib/services/asset-class.service";
-import { createInvestmentPosition, updatePositionValue, recordInvestmentEvent } from "@/lib/actions/db-actions";
+import { createInvestmentPosition, deleteInvestmentPosition, updatePositionValue, recordInvestmentEvent } from "@/lib/actions/db-actions";
 import {
   Building2,
   Plus,
@@ -17,6 +17,7 @@ import {
   X,
   Edit2,
   ArrowRightLeft,
+  Trash2,
 } from "lucide-react";
 
 interface FormattedEvent {
@@ -159,6 +160,21 @@ export function InvestimentosClient({
       window.location.reload();
     } catch (err) {
       console.error("Erro ao atualizar valor:", err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeletePosition = async (position: InvestmentPositionItemData) => {
+    const confirmation = `Excluir “${position.instrumentName}”?\n\nIsso remove o investimento, suas atualizações de saldo e quaisquer movimentações vinculadas. Os saldos das contas envolvidas serão revertidos.`;
+    if (!window.confirm(confirmation)) return;
+
+    setLoading(true);
+    try {
+      await deleteInvestmentPosition(position.id);
+      window.location.reload();
+    } catch (err: any) {
+      window.alert(err?.message || "Não foi possível excluir este investimento.");
     } finally {
       setLoading(false);
     }
@@ -359,6 +375,14 @@ export function InvestimentosClient({
                                   title="Registrar aporte, resgate ou dinheiro recebido"
                                 >
                                   <ArrowRightLeft className="w-3.5 h-3.5" /> Movimentar
+                                </button>
+                                <button
+                                  onClick={() => handleDeletePosition(pos)}
+                                  disabled={loading}
+                                  className="inline-flex items-center gap-1.5 rounded-xl border border-rose-500/20 bg-rose-500/10 px-3 py-2 font-semibold text-rose-300 hover:bg-rose-500/20 disabled:opacity-50"
+                                  title="Excluir investimento e seus registros vinculados"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" /> Excluir
                                 </button>
                               </div>
                             </div>
