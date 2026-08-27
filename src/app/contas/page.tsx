@@ -19,29 +19,8 @@ async function getAccountsData() {
   }
 }
 
-async function getInvestmentPositionsData() {
-  try {
-    const userId = await getDefaultUserId();
-    return db.investmentPosition.findMany({
-      where: { userId, active: true },
-      include: {
-        instrument: true,
-        events: {
-          where: { type: { in: ["APPRECIATION", "DEPRECIATION"] } },
-          orderBy: { date: "desc" },
-          take: 1,
-        },
-      },
-      orderBy: { createdAt: "asc" },
-    });
-  } catch (error) {
-    console.error("Erro ao carregar investimentos das contas:", error);
-    return [];
-  }
-}
-
 export default async function ContasPage() {
-  const [dbAccounts, dbPositions] = await Promise.all([getAccountsData(), getInvestmentPositionsData()]);
+  const dbAccounts = await getAccountsData();
 
   const accounts = dbAccounts.map((a) => ({
     id: a.id,
@@ -55,15 +34,5 @@ export default async function ContasPage() {
     diff: a.reconciliationDiff.toNumber(),
   }));
 
-  const investmentPositions = dbPositions.map((position) => ({
-    id: position.id,
-    accountId: position.accountId,
-    name: position.instrument.name,
-    currentValue: position.currentValue.toNumber(),
-    acquisitionValue: position.acquisitionValue.toNumber(),
-    latestVariation: position.events[0] ? (position.events[0].type === "DEPRECIATION" ? -position.events[0].amount.toNumber() : position.events[0].amount.toNumber()) : null,
-    latestVariationDate: position.events[0]?.date.toISOString() ?? null,
-  }));
-
-  return <ContasClient initialAccounts={accounts} initialInvestmentPositions={investmentPositions} />;
+  return <ContasClient initialAccounts={accounts} />;
 }
