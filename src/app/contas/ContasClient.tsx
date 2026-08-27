@@ -43,7 +43,6 @@ const ACCOUNT_TYPES = [
   { value: "SAVINGS", label: "Poupança" },
   { value: "CASH", label: "Dinheiro / Carteira" },
   { value: "BROKERAGE", label: "Corretora" },
-  { value: "INVESTMENT", label: "Conta de investimento" },
   { value: "CREDIT_CARD", label: "Cartão de crédito" },
   { value: "OTHER", label: "Outra conta" },
 ];
@@ -62,7 +61,8 @@ export function ContasClient({ initialAccounts, initialInvestmentPositions }: Co
   const [openingAdjustment, setOpeningAdjustment] = useState<AccountItem | null>(null);
   const [newOpeningBalance, setNewOpeningBalance] = useState("");
 
-  const financialAccounts = accounts.filter(a => a.type !== "CREDIT_CARD");
+  const technicalCustodyAccountIds = new Set(initialInvestmentPositions.map((position) => position.accountId));
+  const financialAccounts = accounts.filter(a => a.type !== "CREDIT_CARD" && !(a.type === "INVESTMENT" && technicalCustodyAccountIds.has(a.id) && a.balance === 0));
   const cards = accounts.filter(a => a.type === "CREDIT_CARD");
   const availableBalance = financialAccounts.reduce((acc, a) => acc + Math.max(0, a.balance), 0);
   const cardDebt = cards.reduce((acc, a) => acc + Math.max(0, -a.balance), 0);
