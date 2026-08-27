@@ -852,7 +852,9 @@ export async function getInvestmentPositions() {
 }
 
 export async function createInvestmentPosition(data: {
-  accountId: string;
+  accountId?: string;
+  financialInstitutionId?: string;
+  sourceAccountId?: string;
   instrumentName: string;
   symbol?: string;
   exchange?: string;
@@ -866,9 +868,42 @@ export async function createInvestmentPosition(data: {
   const userId = await getDefaultUserId();
 
   return db.$transaction(async (tx) => {
-    const targetAccount = await tx.account.findFirst({
-      where: { id: data.accountId, userId },
-    });
+    let targetAccount = data.financialInstitutionId
+      ? await tx.account.findFirst({
+          where: {
+            userId,
+            financialInstitutionId: data.financialInstitutionId,
+            active: true,
+            type: "INVESTMENT",
+          },
+          orderBy: { createdAt: "asc" },
+        })
+      : null;
+
+    if (!targetAccount && data.financialInstitutionId) {
+      const institution = await tx.financialInstitution.findFirst({
+        where: { id: data.financialInstitutionId, userId },
+      });
+      if (!institution) throw new Error("Instituição não pertence ao usuário.");
+
+      // Registro interno: agrupa produtos da mesma instituição, mas não é uma
+      // conta de dinheiro e não deve aparecer para a pessoa usar no dia a dia.
+      targetAccount = await tx.account.create({
+        data: {
+          userId,
+          financialInstitutionId: institution.id,
+          name: "Carteira de investimentos",
+          type: "INVESTMENT",
+          initialBalance: 0,
+          calculatedBalance: 0,
+          confirmedBalance: 0,
+        },
+      });
+    }
+
+    if (!targetAccount && data.accountId) {
+      targetAccount = await tx.account.findFirst({ where: { id: data.accountId, userId } });
+    }
     if (!targetAccount) throw new Error("Conta de custódia não pertence ao usuário.");
 
     const normSymbol = data.symbol ? data.symbol.trim().toUpperCase() : null;
@@ -899,7 +934,7 @@ export async function createInvestmentPosition(data: {
     const position = await tx.investmentPosition.create({
       data: {
         userId,
-        accountId: data.accountId,
+        accountId: targetAccount.id,
         instrumentId: instrument.id,
         quantity: data.quantity || null,
         averageCost: data.averageCost || (data.quantity ? data.acquisitionValue / data.quantity : null),
@@ -931,10 +966,15 @@ export async function createInvestmentPosition(data: {
         },
       });
     } else {
+      if (!data.sourceAccountId) throw new Error("Informe a conta de onde saiu o dinheiro do aporte.");
+      const sourceAccount = await tx.account.findFirst({ where: { id: data.sourceAccountId, userId, active: true } });
+      if (!sourceAccount) throw new Error("Conta de origem não pertence ao usuário.");
+      if (sourceAccount.id === targetAccount.id) throw new Error("Escolha uma conta de dinheiro para o aporte.");
+
       const txRecord = await tx.transaction.create({
         data: {
           userId,
-          accountId: data.accountId,
+          accountId: sourceAccount.id,
           amount: data.acquisitionValue,
           direction: "DEBIT",
           transactionType: "INVESTMENT_CONTRIBUTION",
@@ -951,7 +991,7 @@ export async function createInvestmentPosition(data: {
       });
 
       await tx.account.update({
-        where: { id: data.accountId },
+        where: { id: sourceAccount.id },
         data: { calculatedBalance: { decrement: data.acquisitionValue } },
       });
 
