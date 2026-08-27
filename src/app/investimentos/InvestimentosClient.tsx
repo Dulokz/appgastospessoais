@@ -64,7 +64,12 @@ export function InvestimentosClient({
   const [isRecordEventOpen, setIsRecordEventOpen] = useState<InvestmentPositionItemData | null>(null);
 
   // Add Position Form State
-  const [accountId, setAccountId] = useState(accounts[0]?.id || "");
+  const investmentInstitutions = Array.from(new Map(accounts.filter((account) => account.financialInstitutionId).map((account) => [account.financialInstitutionId, account.financialInstitutionName || "Instituição"])).entries()).map(([id, name]) => ({ id, name }));
+  const visibleCashAccounts = accounts.filter((account) => !["INVESTMENT", "BROKERAGE"].includes(account.type));
+  const positionAccountIds = new Set(positions.map((position) => position.accountId));
+  const accountsForSummary = accounts.filter((account) => !(positionAccountIds.has(account.id) && account.type === "INVESTMENT" && Number(account.calculatedBalance) === 0));
+  const [institutionId, setInstitutionId] = useState(investmentInstitutions[0]?.id || "");
+  const [sourceAccountId, setSourceAccountId] = useState(visibleCashAccounts[0]?.id || "");
   const [isInitialPosition, setIsInitialPosition] = useState(true); // Default = Já possuo este investimento
   const [instrumentName, setInstrumentName] = useState("");
   const [symbol, setSymbol] = useState("");
@@ -83,11 +88,11 @@ export function InvestimentosClient({
   const [eventType, setEventType] = useState<"DIVIDEND" | "JCP" | "INCOME_RECEIVED" | "CONTRIBUTION" | "WITHDRAWAL">("DIVIDEND");
   const [eventAmountStr, setEventAmountStr] = useState("");
   const [realizedGainStr, setRealizedGainStr] = useState("");
-  const [eventAccountTarget, setEventAccountTarget] = useState(accounts[0]?.id || "");
+  const [eventAccountTarget, setEventAccountTarget] = useState(visibleCashAccounts[0]?.id || "");
   const [eventNotes, setEventNotes] = useState("");
 
-  const consolidatedInstitutions = InstitutionConsolidationService.consolidateByInstitution(accounts, positions);
-  const totalLiquid = accounts.reduce((acc, a) => acc + Number(a.calculatedBalance), 0);
+  const consolidatedInstitutions = InstitutionConsolidationService.consolidateByInstitution(accountsForSummary, positions);
+  const totalLiquid = accountsForSummary.reduce((acc, a) => acc + Number(a.calculatedBalance), 0);
   const assetClasses = AssetClassService.consolidateByClass(positions, totalLiquid);
   const totalInvested = positions.reduce((acc, p) => acc + Number(p.currentValue), 0);
 
@@ -115,6 +120,14 @@ export function InvestimentosClient({
     setUpdateNotes("");
   };
 
+  const openMovement = (position: InvestmentPositionItemData) => {
+    setIsRecordEventOpen(position);
+    setEventAccountTarget(visibleCashAccounts.find((account) => account.financialInstitutionId === position.financialInstitutionId)?.id || visibleCashAccounts[0]?.id || "");
+    setEventAmountStr("");
+    setRealizedGainStr("");
+    setEventNotes("");
+  };
+
   const handleCreatePosition = async () => {
     if (!instrumentName || !currentValueStr) return;
     setLoading(true);
@@ -125,7 +138,8 @@ export function InvestimentosClient({
       const qty = quantityStr ? parseFloat(quantityStr) : undefined;
 
       await createInvestmentPosition({
-        accountId,
+        financialInstitutionId: institutionId,
+        sourceAccountId: isInitialPosition ? undefined : sourceAccountId,
         instrumentName,
         symbol,
         instrumentType: instrumentType as any,
@@ -370,7 +384,7 @@ export function InvestimentosClient({
                                   <Edit2 className="w-3.5 h-3.5" /> Atualizar saldo
                                 </button>
                                 <button
-                                  onClick={() => setIsRecordEventOpen(pos)}
+                                  onClick={() => openMovement(pos)}
                                   className="inline-flex items-center gap-1.5 rounded-xl bg-white/5 px-3 py-2 font-semibold text-slate-300 hover:bg-white/10"
                                   title="Registrar aporte, resgate ou dinheiro recebido"
                                 >
@@ -445,19 +459,27 @@ export function InvestimentosClient({
             </div>
 
             <div>
-              <label className="text-xs text-muted-foreground font-semibold block mb-1">Conta de Custódia (Instituição)</label>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1">Onde este investimento está?</label>
               <select
-                value={accountId}
-                onChange={(e) => setAccountId(e.target.value)}
+                value={institutionId}
+                onChange={(e) => setInstitutionId(e.target.value)}
                 className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-white focus:outline-none"
               >
-                {accounts.map((acc) => (
-                  <option key={acc.id} value={acc.id}>
-                    {acc.financialInstitutionName} - {acc.name}
+                {investmentInstitutions.map((institution) => (
+                  <option key={institution.id} value={institution.id}>
+                    {institution.name}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">A carteira interna é vinculada automaticamente; você não precisa criar uma conta para o produto.</p>
             </div>
+
+            {!isInitialPosition && <div>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1">De qual conta saiu o dinheiro?</label>
+              <select value={sourceAccountId} onChange={(e) => setSourceAccountId(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-white focus:outline-none">
+                {visibleCashAccounts.map((account) => <option key={account.id} value={account.id}>{account.financialInstitutionName} - {account.name}</option>)}
+              </select>
+            </div>}
 
             <div>
               <label className="text-xs text-muted-foreground font-semibold block mb-1">Tipo de Investimento</label>
@@ -540,7 +562,7 @@ export function InvestimentosClient({
               </button>
               <button
                 onClick={handleCreatePosition}
-                disabled={loading || !instrumentName || !currentValueStr}
+                disabled={loading || !institutionId || !instrumentName || !currentValueStr || (!isInitialPosition && !sourceAccountId)}
                 className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-white shadow-lg shadow-emerald-500/20"
               >
                 {loading ? "Salvando..." : "Salvar Investimento"}
@@ -641,13 +663,21 @@ export function InvestimentosClient({
               </div>
             )}
 
+            <div>
+              <label className="text-xs text-muted-foreground font-semibold block mb-1">Conta de dinheiro envolvida</label>
+              <select value={eventAccountTarget} onChange={(e) => setEventAccountTarget(e.target.value)} className="w-full px-4 py-2.5 rounded-xl bg-slate-800 border border-white/10 text-xs text-white focus:outline-none">
+                {visibleCashAccounts.map((account) => <option key={account.id} value={account.id}>{account.financialInstitutionName} - {account.name}</option>)}
+              </select>
+              <p className="mt-1 text-[11px] text-muted-foreground">No aporte o dinheiro sai desta conta; no resgate ou provento, entra nela.</p>
+            </div>
+
             <div className="flex justify-end gap-3 pt-3">
               <button onClick={() => setIsRecordEventOpen(null)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">
                 Cancelar
               </button>
               <button
                 onClick={handleRecordEvent}
-                disabled={loading || !eventAmountStr}
+                disabled={loading || !eventAmountStr || !eventAccountTarget}
                 className="px-5 py-2 rounded-xl bg-emerald-500 hover:bg-emerald-400 text-xs font-bold text-white shadow-lg shadow-emerald-500/20"
               >
                 {loading ? "Registrando..." : "Confirmar Evento"}
