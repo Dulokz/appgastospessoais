@@ -9,6 +9,7 @@ import { AccountPicker } from "@/components/accounts/AccountPicker";
 type Account = { id: string; name: string; type: string; institutionName?: string | null };
 type Category = { id: string; name: string; parentName?: string | null };
 type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER_IN" | "TRANSFER_OUT"; sourceAccountId?: string };
+type ImportRule = { matchText: string; action: "TRANSFER_IN" | "TRANSFER_OUT"; counterpartAccountId: string | null };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
 const transferKindFor = (description: string, signedAmount: number): Entry["importKind"] => { const name = description.toLocaleLowerCase("pt-BR"); if (/resgate\s+(?:da?\s*)?(?:poupan[cç]a|aplica[cç][aã]o)|ourocap/i.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
@@ -114,7 +115,7 @@ function parsePdfText(text: string): Entry[] {
   return rows;
 }
 
-export function StatementImportClient({ accounts, categories }: { accounts: Account[]; categories: Category[] }) {
+export function StatementImportClient({ accounts, categories, rules }: { accounts: Account[]; categories: Category[]; rules: ImportRule[] }) {
   const [accountId, setAccountId] = useState("");
   const [entries, setEntries] = useState<Entry[]>([]);
   const [fileName, setFileName] = useState("");
@@ -129,7 +130,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const pending = entries.filter((entry) => !entry.ignored);
   const account = accounts.find((item) => item.id === accountId);
   const isBancoDoBrasil = (account?.institutionName || "").toLocaleLowerCase("pt-BR").includes("banco do brasil");
-  const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind;
+  const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind && !!entry.sourceAccountId;
   const selectedEntries = entries.filter((entry) => selected.includes(entry.id) && !isAutomaticTransfer(entry));
   const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
   const transferEntries = entries.filter((entry) => !entry.ignored && isAutomaticTransfer(entry));
@@ -152,7 +153,13 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
       const lower = file.name.toLowerCase();
       const parsed = lower.endsWith(".ofx") || lower.endsWith(".qfx") ? parseOfx(text) : lower.endsWith(".pdf") ? parsePdfText(text) : parseCsv(text);
       if (!parsed.length) throw new Error(lower.endsWith(".pdf") ? "Não consegui ler itens neste PDF. Ele pode ser escaneado ou protegido; exporte o extrato em OFX/CSV para uma importação segura." : "Não encontrei linhas com data e valor. Confira o formato do arquivo.");
-      setEntries(parsed); setFileName(file.name); setSelected(parsed.filter((entry) => !entry.ignored).map((entry) => entry.id));
+      const bankIsBB = (accounts.find((item) => item.id === accountId)?.institutionName || "").toLocaleLowerCase("pt-BR").includes("banco do brasil");
+      const classified = parsed.map((entry) => {
+        const normalized = entry.description.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+        const rule = bankIsBB ? rules.find((item) => item.counterpartAccountId && normalized.includes(item.matchText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase())) : null;
+        return rule ? { ...entry, importKind: rule.action, sourceAccountId: rule.counterpartAccountId! } : entry;
+      });
+      setEntries(classified); setFileName(file.name); setSelected(classified.filter((entry) => !entry.ignored).map((entry) => entry.id));
     } catch (cause: any) {
       setEntries([]); setError(cause.message || "Não foi possível ler o arquivo.");
     } finally { setLoading(false); event.target.value = ""; }
