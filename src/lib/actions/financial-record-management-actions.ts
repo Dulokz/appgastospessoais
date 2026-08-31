@@ -6,7 +6,7 @@ import { toDecimal } from "@/lib/decimal";
 import { FinancialCommandService } from "@/lib/services/financial-command.service";
 import { revalidatePath } from "next/cache";
 
-function refresh(paths: string[]) { paths.forEach(revalidatePath); }
+function refresh(paths: string[]) { paths.forEach((path) => revalidatePath(path)); }
 
 export async function updateAccountProfile(input: { id: string; name: string; institutionName?: string }) {
   const userId = await getDefaultUserId();
