@@ -7,9 +7,10 @@ import { TransactionCategoryPicker } from "@/components/categories/TransactionCa
 
 type Account = { id: string; name: string; type: string; institutionName?: string | null };
 type Category = { id: string; name: string; parentName?: string | null };
-type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean };
+type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER"; sourceAccountId?: string };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
+const isSavingsRedemption = (description: string, signedAmount: number) => signedAmount > 0 && /resgate\s+(?:da?\s*)?(?:poupan[cç]a|aplica[cç][aã]o)/i.test(description);
 
 function parseMoney(value: string) {
   const clean = value.replace(/[^0-9,.-]/g, "").trim();
@@ -54,6 +55,7 @@ function parseOfx(text: string): Entry[] {
       detail,
       signedAmount: amount,
       categoryId: "",
+      importKind: isSavingsRedemption(name, amount) ? "TRANSFER" : undefined,
       // Linhas de saldo/fechamento não são fatos financeiros e não devem ser lançadas.
       ignored: !Number.isFinite(amount) || Math.abs(amount) < 0.005 || /^(saldo|balance)/i.test(name),
     };
@@ -125,8 +127,10 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const visible = useMemo(() => entries.filter((entry) => entry.description.toLowerCase().includes(query.toLowerCase())), [entries, query]);
   const pending = entries.filter((entry) => !entry.ignored);
   const account = accounts.find((item) => item.id === accountId);
-  const selectedEntries = entries.filter((entry) => selected.includes(entry.id));
+  const selectedEntries = entries.filter((entry) => selected.includes(entry.id) && entry.importKind !== "TRANSFER");
   const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
+  const transferEntries = entries.filter((entry) => !entry.ignored && entry.importKind === "TRANSFER");
+  const accountLabel = (item: Account) => `${item.name}${item.institutionName ? ` · ${item.institutionName}` : ""}`;
 
   const updateEntry = (id: string, patch: Partial<Entry>) => setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -184,10 +188,11 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
     </section>
 
     {entries.length > 0 && <section className="space-y-4">
+      {transferEntries.length > 0 && <div className="rounded-2xl border border-violet-400/25 bg-violet-500/10 p-4 text-sm text-violet-100"><strong>Resgate da aplicação identificado.</strong> Escolha de qual conta de poupança/aplicação o dinheiro saiu. Ele será importado como <strong>transferência interna</strong>, nunca como receita.</div>}
       <div className="glass-card rounded-2xl p-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex-1"><strong className="text-white">{pending.length} itens prontos para revisar</strong><p className="text-xs text-muted-foreground">Selecione vários e aplique uma categoria de uma vez.</p></div>
         <div className="w-full max-w-xs"><TransactionCategoryPicker categories={categories} value={bulkCategory} direction={bulkDirection} onChange={setBulkCategory} compact /></div>
-        <button type="button" disabled={!bulkCategory || !selected.length} onClick={() => { setEntries((current) => current.map((entry) => selected.includes(entry.id) ? { ...entry, categoryId: bulkCategory } : entry)); setBulkCategory(""); }} className="rounded-xl bg-cyan-500/15 px-3 py-2 text-sm font-bold text-cyan-200 disabled:opacity-40">Aplicar em {selected.length || "..."}</button>
+        <button type="button" disabled={!bulkCategory || !selected.length} onClick={() => { setEntries((current) => current.map((entry) => selected.includes(entry.id) && entry.importKind !== "TRANSFER" ? { ...entry, categoryId: bulkCategory } : entry)); setBulkCategory(""); }} className="rounded-xl bg-cyan-500/15 px-3 py-2 text-sm font-bold text-cyan-200 disabled:opacity-40">Aplicar em {selected.length || "..."}</button>
       </div>
 
       <div className="rounded-3xl border border-white/10 overflow-hidden bg-slate-950">
@@ -197,7 +202,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
             <input type="checkbox" checked={selected.includes(entry.id)} disabled={entry.ignored} onChange={() => toggle(entry.id)} />
             <span className="text-xs text-slate-400">{new Date(entry.date + "T12:00:00").toLocaleDateString("pt-BR")}</span>
             <div><p className="text-sm font-semibold text-white">{entry.description}</p><p className="text-[11px] text-muted-foreground">{entry.detail ? entry.detail + " · " : ""}{entry.externalId ? "ID do banco: " + entry.externalId : "Sem identificador do banco"}</p></div>
-            <TransactionCategoryPicker categories={categories} value={entry.categoryId} direction={entry.signedAmount > 0 ? "INCOME" : "EXPENSE"} disabled={entry.ignored || account?.type === "CREDIT_CARD" && entry.signedAmount > 0} onChange={(categoryId) => updateEntry(entry.id, { categoryId })} compact />
+            {entry.importKind === "TRANSFER" ? <label className="rounded-xl border border-violet-400/25 bg-violet-500/10 px-3 py-2 text-xs text-violet-100"><span className="mb-1 block font-semibold">Sai de qual aplicação?</span><select value={entry.sourceAccountId || ""} disabled={entry.ignored || !accountId} onChange={(event) => updateEntry(entry.id, { sourceAccountId: event.target.value })} className="w-full bg-transparent text-xs text-white outline-none disabled:opacity-40"><option value="">Escolher origem...</option>{accounts.filter((item) => item.id !== accountId && item.type !== "CREDIT_CARD").map((item) => <option key={item.id} value={item.id}>{accountLabel(item)}</option>)}</select></label> : <TransactionCategoryPicker categories={categories} value={entry.categoryId} direction={entry.signedAmount > 0 ? "INCOME" : "EXPENSE"} disabled={entry.ignored || account?.type === "CREDIT_CARD" && entry.signedAmount > 0} onChange={(categoryId) => updateEntry(entry.id, { categoryId })} compact />}
             <strong className={entry.signedAmount > 0 ? "text-emerald-300 text-sm text-right" : "text-rose-300 text-sm text-right"}>{entry.signedAmount > 0 ? "+" : "-"}{currency(entry.signedAmount)}</strong>
             <button type="button" onClick={() => updateEntry(entry.id, { ignored: !entry.ignored })} title={entry.ignored ? "Importar item" : "Ignorar item"} className={"rounded-lg p-2 " + (entry.ignored ? "bg-white/5 text-slate-400" : "bg-rose-500/10 text-rose-300")}>{entry.ignored ? <Check className="w-4 h-4"/> : <X className="w-4 h-4"/>}</button>
           </div>)}
