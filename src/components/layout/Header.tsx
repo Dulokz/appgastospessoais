@@ -5,7 +5,7 @@ import { ShieldCheck, Plus } from "lucide-react";
 import { QuickRegisterModal } from "@/components/transactions/QuickRegisterModal";
 
 interface HeaderProps {
-  accounts: { id: string; name: string; type: string }[];
+  accounts: { id: string; name: string; type: string; institutionName?: string | null }[];
   categories: { id: string; name: string }[];
 }
 

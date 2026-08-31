@@ -18,7 +18,7 @@ import { ASSET_CATEGORY_GROUPS, ASSET_CATEGORY_OPTIONS } from "@/lib/asset-categ
 interface QuickRegisterModalProps {
   isOpen: boolean;
   onClose: () => void;
-  accounts: { id: string; name: string; type: string }[];
+  accounts: { id: string; name: string; type: string; institutionName?: string | null }[];
   categories: { id: string; name: string }[];
 }
 
@@ -150,7 +150,13 @@ export function QuickRegisterModal({ isOpen, onClose, accounts, categories }: Qu
                   {flow === "RECEBI" ? "Onde entrou?" : flow === "PAGUEI_FATURA" ? "De qual conta saiu o pagamento?" : "Conta ou cartão"}
                 </label>
                 <select value={sourceAccountId} onChange={(e) => setSourceAccountId(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">
-                  {sourceOptions.map((a) => <option key={a.id} value={a.id}>{a.name}{a.type === "CREDIT_CARD" ? " · cartão" : ""}</option>)}
+                  {sourceOptions.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name}
+                      {a.institutionName ? ` · ${a.institutionName}` : ""}
+                      {a.type === "CREDIT_CARD" ? " · cartão" : ""}
+                    </option>
+                  ))}
                 </select>
               </div>
 
@@ -158,7 +164,13 @@ export function QuickRegisterModal({ isOpen, onClose, accounts, categories }: Qu
                 <div>
                   <label className="text-xs text-muted-foreground font-semibold block mb-1.5">{flow === "PAGUEI_FATURA" ? "Qual cartão foi pago?" : "Para qual conta?"}</label>
                   <select value={destAccountId} onChange={(e) => setDestAccountId(e.target.value)} className="w-full px-4 py-3 rounded-xl bg-slate-900 border border-white/10 text-sm text-white">
-                    {destOptions.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+                    {destOptions.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.name}
+                        {a.institutionName ? ` · ${a.institutionName}` : ""}
+                        {a.type === "CREDIT_CARD" ? " · cartão" : ""}
+                      </option>
+                    ))}
                   </select>
                 </div>
               )}

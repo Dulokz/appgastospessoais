@@ -19,7 +19,16 @@ async function getQuickRegisterData() {
       db.account.findMany({
         where: { userId, active: true },
         orderBy: { createdAt: "asc" },
-        select: { id: true, name: true, type: true },
+        select: {
+          id: true,
+          name: true,
+          type: true,
+          financialInstitution: {
+            select: {
+              name: true,
+            },
+          },
+        },
       }),
       db.category.findMany({
         where: { userId, parentId: null, deletedAt: null },
@@ -27,7 +36,13 @@ async function getQuickRegisterData() {
         select: { id: true, name: true },
       }),
     ]);
-    return { accounts, categories };
+    const formattedAccounts = accounts.map((a) => ({
+      id: a.id,
+      name: a.name,
+      type: a.type,
+      institutionName: a.financialInstitution?.name || null,
+    }));
+    return { accounts: formattedAccounts, categories };
   } catch {
     return { accounts: [], categories: [] };
   }
