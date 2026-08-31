@@ -135,9 +135,9 @@ export function CategoriasClient({ initialCategories }: CategoriasClientProps) {
   };
 
   const handleDelete = async (id: string, name: string) => {
-    if (confirm(`Tem certeza que deseja excluir a categoria "${name}"?`)) {
+    if (confirm(`Arquivar a categoria "${name}"? Categorias com lançamentos precisam ser recategorizadas antes para preservar o histórico.`)) {
       try {
-        await deleteCategory(id);
+        await archiveCategory(id);
         window.location.reload();
       } catch (err: any) {
         alert("Erro ao excluir categoria: " + err.message);
