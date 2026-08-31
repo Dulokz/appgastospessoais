@@ -136,6 +136,6 @@ export async function commitStatementImport(input: {
     }
   }
 
-  ["/", "/transacoes", "/contas", "/cartoes", "/resultado-mes", "/relatorios", "/meu-patrimonio", "/importar"].forEach(revalidatePath);
+  ["/", "/transacoes", "/contas", "/cartoes", "/resultado-mes", "/relatorios", "/meu-patrimonio", "/importar"].forEach((path) => revalidatePath(path));
   return { imported, duplicates, ignored };
 }
