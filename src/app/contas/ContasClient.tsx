@@ -36,6 +36,16 @@ const ACCOUNT_TYPES = [
 
 const MONEY_ACCOUNT_TYPES = ["CHECKING", "SAVINGS", "CASH", "BROKERAGE"];
 
+function parseBrazilianMoney(value: string | number) {
+  const text = String(value).trim().replace(/[^0-9,.-]/g, "");
+  if (!text) return 0;
+  const comma = text.lastIndexOf(",");
+  const dot = text.lastIndexOf(".");
+  const normalized = comma > dot ? text.replace(/\\./g, "").replace(",", ".") : dot > comma ? text.replace(/,/g, "") : text;
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 export function ContasClient({ initialAccounts }: ContasClientProps) {
   const [accounts, setAccounts] = useState<AccountItem[]>(initialAccounts);
   const [reconcileAccount, setReconcileAccount] = useState<any | null>(null);
@@ -82,7 +92,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
     setFormError("");
     setLoading(true);
     try {
-      const typedValue = parseFloat(initialBalanceStr) || 0;
+      const typedValue = parseBrazilianMoney(initialBalanceStr);
       const initialBal = type === "CREDIT_CARD" ? -Math.abs(typedValue) : typedValue;
       await createAccount({ name, type: type as any, institutionName: inst, initialBalance: initialBal });
       setIsAddOpen(false);
@@ -96,8 +106,8 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
 
   const handleCorrectOpeningBalance = async () => {
     if (!openingAdjustment) return;
-    const value = Number(newOpeningBalance.replace(",", "."));
-    if (!Number.isFinite(value)) return alert("Informe um valor válido.");
+    const value = parseBrazilianMoney(newOpeningBalance);
+    if (!newOpeningBalance.trim()) return alert("Informe um valor válido.");
     setLoading(true);
     try {
       await correctAccountOpeningBalance({ id: openingAdjustment.id, balance: value });
@@ -188,7 +198,7 @@ export function ContasClient({ initialAccounts }: ContasClientProps) {
           <div className="w-full max-w-md bg-slate-950 border border-white/10 rounded-3xl p-6 space-y-4">
             <div className="flex items-center justify-between"><div><p className="text-[11px] uppercase tracking-[0.14em] text-cyan-300">Correção de posição inicial</p><h2 className="font-bold text-white">{openingAdjustment.name}</h2></div><button onClick={() => setOpeningAdjustment(null)}><X className="w-5 h-5 text-slate-400" /></button></div>
             <div className="rounded-xl bg-cyan-500/10 border border-cyan-500/20 p-3 text-xs text-slate-300">Este ajuste não cria receita nem despesa. Ele corrige o saldo existente na data-base do seu controle e recalcula o saldo atual pela diferença.</div>
-            <div className="grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-white/5 p-3"><p className="text-muted-foreground">Saldo atual calculado</p><p className="font-bold text-white mt-1">{formatCurrencyBRL(openingAdjustment.balance)}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-muted-foreground">Novo saldo inicial</p><p className="font-bold text-cyan-300 mt-1">{formatCurrencyBRL(Number(newOpeningBalance) || 0)}</p></div></div>
+            <div className="grid grid-cols-2 gap-3 text-xs"><div className="rounded-xl bg-white/5 p-3"><p className="text-muted-foreground">Saldo atual calculado</p><p className="font-bold text-white mt-1">{formatCurrencyBRL(openingAdjustment.balance)}</p></div><div className="rounded-xl bg-white/5 p-3"><p className="text-muted-foreground">Novo saldo inicial</p><p className="font-bold text-cyan-300 mt-1">{formatCurrencyBRL(parseBrazilianMoney(newOpeningBalance))}</p></div></div>
             <div><label className="text-xs text-muted-foreground block mb-1">Saldo na data-base</label><CurrencyInput value={newOpeningBalance} onChangeValue={(_, raw) => setNewOpeningBalance(raw)} /></div>
             <div className="flex justify-end gap-2"><button onClick={() => setOpeningAdjustment(null)} className="px-4 py-2 rounded-xl bg-white/5 text-xs text-white">Cancelar</button><button disabled={loading} onClick={handleCorrectOpeningBalance} className="px-4 py-2 rounded-xl bg-cyan-500 text-xs font-bold text-slate-950">{loading ? "Corrigindo..." : "Confirmar correção"}</button></div>
           </div>
