@@ -41,7 +41,7 @@ function parseBrazilianMoney(value: string | number) {
   if (!text) return 0;
   const comma = text.lastIndexOf(",");
   const dot = text.lastIndexOf(".");
-  const normalized = comma > dot ? text.replace(/\\./g, "").replace(",", ".") : dot > comma ? text.replace(/,/g, "") : text;
+  const normalized = comma > dot ? text.replace(/\./g, "").replace(",", ".") : dot > comma ? text.replace(/,/g, "") : text;
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : 0;
 }
