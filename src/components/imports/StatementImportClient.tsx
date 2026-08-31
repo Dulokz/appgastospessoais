@@ -133,7 +133,6 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
   const transferEntries = entries.filter((entry) => !entry.ignored && entry.importKind === "TRANSFER");
   const transferSources = accounts.filter((item) => item.id !== accountId && item.type !== "CREDIT_CARD");
-  const accountLabel = (item: Account) => `${item.name}${item.institutionName ? ` · ${item.institutionName}` : ""}`;
 
   const updateEntry = (id: string, patch: Partial<Entry>) => setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
