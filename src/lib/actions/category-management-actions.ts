@@ -22,5 +22,5 @@ export async function archiveCategory(id: string) {
   }
 
   await db.category.updateMany({ where: { userId, id: { in: ids } }, data: { deletedAt: new Date() } });
-  ["/", "/categorias", "/transacoes", "/resultado-mes", "/relatorios"].forEach(revalidatePath);
+  ["/", "/categorias", "/transacoes", "/resultado-mes", "/relatorios"].forEach((path) => revalidatePath(path));
 }
