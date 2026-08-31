@@ -13,6 +13,8 @@ type ImportedEntry = {
   externalId?: string | null;
   categoryId?: string | null;
   ignored?: boolean;
+  importKind?: "TRANSFER";
+  sourceAccountId?: string | null;
 };
 
 function invoiceKeyForDate(date: Date, closingDay?: number | null) {
@@ -59,7 +61,7 @@ export async function commitStatementImport(input: {
       ignored++;
       continue;
     }
-    if (entry.categoryId && !validCategories.has(entry.categoryId)) {
+    if (entry.importKind !== "TRANSFER" && entry.categoryId && !validCategories.has(entry.categoryId)) {
       throw new Error("Uma das categorias escolhidas não pertence ao seu cadastro.");
     }
 
@@ -75,11 +77,11 @@ export async function commitStatementImport(input: {
     const duplicate = await db.transaction.findFirst({
       where: {
         userId,
-        accountId: account.id,
         deletedAt: null,
         OR: [
-          { importHash },
-          ...(externalId ? [{ externalId }] : []),
+          { accountId: account.id, importHash },
+          { destinationAccountId: account.id, importHash },
+          ...(externalId ? [{ accountId: account.id, externalId }, { destinationAccountId: account.id, externalId }] : []),
         ],
       },
       select: { id: true },
@@ -91,12 +93,48 @@ export async function commitStatementImport(input: {
 
     const amount = new Decimal(Math.abs(entry.signedAmount));
     const isCredit = entry.signedAmount > 0;
+    const isTransfer = entry.importKind === "TRANSFER";
+    if (isTransfer) {
+      if (!isCredit) throw new Error(`A linha ${index + 1} marcada como transferência precisa entrar na conta deste extrato.`);
+      if (!entry.sourceAccountId || entry.sourceAccountId === account.id) {
+        throw new Error(`Escolha a conta/aplicação de origem para “${entry.description.trim()}”.`);
+      }
+    }
     const isCard = account.type === "CREDIT_CARD";
     const transactionType = isCard && isCredit ? "CARD_PAYMENT" : isCredit ? "INCOME" : "EXPENSE";
     const allocationType = transactionType === "CARD_PAYMENT" ? "CARD_PAYMENT" : isCredit ? "INCOME" : "EXPENSE";
 
     try {
       await db.$transaction(async (tx) => {
+        if (isTransfer) {
+          const source = await tx.account.findFirst({
+            where: { id: entry.sourceAccountId!, userId, active: true, type: { not: "CREDIT_CARD" } },
+            select: { id: true },
+          });
+          if (!source) throw new Error("A conta/aplicação escolhida para o resgate não está disponível.");
+
+          await tx.transaction.create({
+            data: {
+              userId,
+              accountId: source.id,
+              destinationAccountId: account.id,
+              date,
+              description: entry.description.trim(),
+              amount,
+              direction: "DEBIT",
+              transactionType: "TRANSFER",
+              source: "IMPORT",
+              externalId,
+              importHash,
+              notes: `Importado de ${input.sourceName} · Resgate da aplicação`,
+              allocations: { create: [{ allocationType: "TRANSFER", amount }] },
+            },
+          });
+          await tx.account.update({ where: { id: source.id }, data: { calculatedBalance: { decrement: amount } } });
+          await tx.account.update({ where: { id: account.id }, data: { calculatedBalance: { increment: amount } } });
+          return;
+        }
+
         await tx.transaction.create({
           data: {
             userId,
