@@ -1,6 +1,7 @@
 import { db } from "@/lib/db";
 import { getDefaultUserId } from "@/lib/auth-user";
 import { CompromissosClient } from "./CompromissosClient";
+import type { Prisma } from "@prisma/client";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +12,9 @@ export default async function CompromissosPage() {
     db.category.findMany({ where: { userId, deletedAt: null }, include: { parent: true }, orderBy: { name: "asc" } }),
   ]);
 
-  let commitments: Awaited<ReturnType<typeof db.scheduledCommitment.findMany>> = [];
+  let commitments: Prisma.ScheduledCommitmentGetPayload<{
+    include: { account: { include: { financialInstitution: true } }; category: { include: { parent: true } } };
+  }>[] = [];
   let loadError: string | null = null;
 
   try {
