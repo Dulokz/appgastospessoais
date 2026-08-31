@@ -128,10 +128,10 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const visible = useMemo(() => entries.filter((entry) => entry.description.toLowerCase().includes(query.toLowerCase())), [entries, query]);
   const pending = entries.filter((entry) => !entry.ignored);
   const account = accounts.find((item) => item.id === accountId);
-  const selectedEntries = entries.filter((entry) => selected.includes(entry.id) && !isAutomaticTransfer(entry));
-  const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
   const isBancoDoBrasil = account?.institutionName?.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase() === "banco do brasil";
   const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind;
+  const selectedEntries = entries.filter((entry) => selected.includes(entry.id) && !isAutomaticTransfer(entry));
+  const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
   const transferEntries = entries.filter((entry) => !entry.ignored && isAutomaticTransfer(entry));
   const ruleFor = (entry: Entry) => /ourocap/i.test(entry.description) ? "OUROCAP" : "POUPANCA";
   const transferRules = [
