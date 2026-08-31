@@ -52,6 +52,7 @@ model User {
   financialInstitutions   FinancialInstitution[]
   recurringRules          RecurringRule[]
   scheduledCommitments    ScheduledCommitment[]
+  importClassificationRules ImportClassificationRule[]
 }
 
 model FinancialInstitution {
@@ -391,4 +392,22 @@ model ScheduledCommitment {
 
   @@unique([recurringRuleId, dueDate])
   @@index([userId, status, dueDate])
+}
+
+
+model ImportClassificationRule {
+  id                   String      @id @default(uuid())
+  userId               String
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  financialInstitution String?
+  matchText            String
+  action               String      // EXPENSE, INCOME, TRANSFER_IN, TRANSFER_OUT, INVESTMENT_CONTRIBUTION, INVESTMENT_WITHDRAWAL, APPRECIATION
+  counterpartAccountId String?
+  investmentPositionId String?
+  categoryId           String?
+  active               Boolean     @default(true)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@index([userId, financialInstitution, active])
 }
