@@ -11,7 +11,7 @@ type Category = { id: string; name: string; parentName?: string | null };
 type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER_IN" | "TRANSFER_OUT"; sourceAccountId?: string };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
-const transferKindFor = (description: string, signedAmount: number) => { const name = description.toLocaleLowerCase("pt-BR"); if (/resgate\s+(?:da?\s*)?(?:poupan[cç]a|aplica[cç][aã]o)|ourocap/i.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
+const transferKindFor = (description: string, signedAmount: number): Entry["importKind"] => { const name = description.toLocaleLowerCase("pt-BR"); if (/resgate\s+(?:da?\s*)?(?:poupan[cç]a|aplica[cç][aã]o)|ourocap/i.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
 
 function parseMoney(value: string) {
   const clean = value.replace(/[^0-9,.-]/g, "").trim();
@@ -166,7 +166,11 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
       const response = await commitStatementImport({
         accountId,
         sourceName: fileName,
-        entries: entries.map(({ id: _id, ...entry }) => ({ ...entry, importKind: isAutomaticTransfer(entry) ? entry.importKind : undefined, externalId: entry.externalId || undefined })),
+        entries: entries.map((entry) => {
+          const importKind = isAutomaticTransfer(entry) ? entry.importKind : undefined;
+          const { id: _id, ...payload } = entry;
+          return { ...payload, importKind, externalId: entry.externalId || undefined };
+        }),
       });
       setResult(response);
       if (response.imported) setEntries((current) => current.map((entry) => ({ ...entry, ignored: true })));
