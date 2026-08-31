@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getDefaultUserId } from "@/lib/auth-user";
 import { Settings, Shield, User, Database, Calendar, RefreshCw, PlusCircle, Pencil, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { ImportRulesClient } from "./ImportRulesClient";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,15 @@ async function getConfiguracoesData() {
     },
   });
 
-  return { user };
+  const [accounts, rules] = await Promise.all([
+    db.account.findMany({ where: { userId, active: true }, include: { financialInstitution: { select: { name: true } } }, orderBy: { name: "asc" } }),
+    db.importClassificationRule.findMany({ where: { userId, active: true }, orderBy: { createdAt: "asc" } }),
+  ]);
+  return { user, accounts, rules };
 }
 
 export default async function ConfiguracoesPage() {
-  const { user } = await getConfiguracoesData();
+  const { user, accounts, rules } = await getConfiguracoesData();
   const startDateStr = user?.controlStartDate
     ? new Date(user.controlStartDate).toLocaleDateString("pt-BR")
     : "Não definida";
@@ -128,6 +133,10 @@ export default async function ConfiguracoesPage() {
           </div>
         </div>
       </div>
+      <ImportRulesClient
+        accounts={accounts.map((account) => ({ id: account.id, name: account.name, institutionName: account.financialInstitution?.name || null }))}
+        rules={rules.map((rule) => ({ id: rule.id, matchText: rule.matchText, action: rule.action, counterpartAccountId: rule.counterpartAccountId, counterpartName: accounts.find((account) => account.id === rule.counterpartAccountId)?.name || null }))}
+      />
     </div>
   );
 }
