@@ -8,7 +8,7 @@ import { revalidatePath } from "next/cache";
 const EDITABLE_TYPES = new Set(["INCOME", "EXPENSE", "REFUND", "INTEREST_INCOME", "INTEREST_EXPENSE", "FEE", "OTHER", "TRANSFER"]);
 
 function refreshViews() {
-  ["/", "/transacoes", "/contas", "/resultado-mes", "/relatorios", "/meu-patrimonio"].forEach(revalidatePath);
+  ["/", "/transacoes", "/contas", "/resultado-mes", "/relatorios", "/meu-patrimonio"].forEach((path) => revalidatePath(path));
 }
 
 async function getEditableTransaction(id: string) {
