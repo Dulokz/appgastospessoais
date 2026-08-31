@@ -1100,9 +1100,30 @@ export async function deleteInvestmentPosition(positionId: string) {
     const transactions = transactionIds.length
       ? await tx.transaction.findMany({
           where: { id: { in: transactionIds }, userId },
-          select: { id: true, accountId: true, amount: true, direction: true },
+          select: { id: true, accountId: true, amount: true, direction: true, source: true },
         })
       : [];
+
+    // Nunca apague um lançamento vindo do banco, nem um lançamento que esteja
+    // ligado a mais de uma posição. Nesses casos a exclusão precisaria de uma
+    // decisão explícita de conciliação, e não pode ocorrer silenciosamente.
+    const references = transactionIds.length
+      ? await tx.investmentEvent.groupBy({
+          by: ["transactionId"],
+          where: { transactionId: { in: transactionIds } },
+          _count: { transactionId: true },
+        })
+      : [];
+    const sharedTransactionIds = new Set(
+      references.filter((reference) => reference.transactionId && reference._count.transactionId > 1)
+        .map((reference) => reference.transactionId as string),
+    );
+    const protectedTransaction = transactions.find(
+      (transaction) => transaction.source === "IMPORT" || sharedTransactionIds.has(transaction.id),
+    );
+    if (protectedTransaction) {
+      throw new Error("Este investimento possui movimentações importadas ou compartilhadas. Para preservar a conciliação, remova primeiro o vínculo específico em Movimentar.");
+    }
 
     // A relação com Transaction é opcional e não deve impedir a remoção.
     await tx.investmentEvent.deleteMany({ where: { investmentPositionId: position.id } });
@@ -1126,7 +1147,7 @@ export async function deleteInvestmentPosition(positionId: string) {
     await tx.investmentPosition.delete({ where: { id: position.id } });
   });
 
-  ["/", "/contas", "/investimentos", "/meu-patrimonio", "/patrimonio", "/transacoes", "/resultado-mes", "/relatorios"].forEach(revalidatePath);
+  ["/", "/contas", "/investimentos", "/meu-patrimonio", "/patrimonio", "/transacoes", "/resultado-mes", "/relatorios"].forEach((path) => revalidatePath(path));
   return { id: positionId };
 }
 
