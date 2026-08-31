@@ -3,6 +3,7 @@
 import { ChangeEvent, useMemo, useState } from "react";
 import { Check, ChevronRight, FileSpreadsheet, FileText, Loader2, Search, ShieldCheck, Upload, X } from "lucide-react";
 import { commitStatementImport } from "@/lib/actions/statement-import-actions";
+import { TransactionCategoryPicker } from "@/components/categories/TransactionCategoryPicker";
 
 type Account = { id: string; name: string; type: string; institutionName?: string | null };
 type Category = { id: string; name: string; parentName?: string | null };
@@ -124,6 +125,8 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const visible = useMemo(() => entries.filter((entry) => entry.description.toLowerCase().includes(query.toLowerCase())), [entries, query]);
   const pending = entries.filter((entry) => !entry.ignored);
   const account = accounts.find((item) => item.id === accountId);
+  const selectedEntries = entries.filter((entry) => selected.includes(entry.id));
+  const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
 
   const updateEntry = (id: string, patch: Partial<Entry>) => setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
@@ -183,7 +186,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
     {entries.length > 0 && <section className="space-y-4">
       <div className="glass-card rounded-2xl p-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex-1"><strong className="text-white">{pending.length} itens prontos para revisar</strong><p className="text-xs text-muted-foreground">Selecione vários e aplique uma categoria de uma vez.</p></div>
-        <select value={bulkCategory} onChange={(event) => setBulkCategory(event.target.value)} className="rounded-xl border border-white/10 bg-slate-800 px-3 py-2 text-sm text-white"><option value="">Categoria em lote...</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.parentName ? category.parentName + " › " : ""}{category.name}</option>)}</select>
+        <div className="w-full max-w-xs"><TransactionCategoryPicker categories={categories} value={bulkCategory} direction={bulkDirection} onChange={setBulkCategory} compact /></div>
         <button type="button" disabled={!bulkCategory || !selected.length} onClick={() => { setEntries((current) => current.map((entry) => selected.includes(entry.id) ? { ...entry, categoryId: bulkCategory } : entry)); setBulkCategory(""); }} className="rounded-xl bg-cyan-500/15 px-3 py-2 text-sm font-bold text-cyan-200 disabled:opacity-40">Aplicar em {selected.length || "..."}</button>
       </div>
 
@@ -194,7 +197,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
             <input type="checkbox" checked={selected.includes(entry.id)} disabled={entry.ignored} onChange={() => toggle(entry.id)} />
             <span className="text-xs text-slate-400">{new Date(entry.date + "T12:00:00").toLocaleDateString("pt-BR")}</span>
             <div><p className="text-sm font-semibold text-white">{entry.description}</p><p className="text-[11px] text-muted-foreground">{entry.detail ? entry.detail + " · " : ""}{entry.externalId ? "ID do banco: " + entry.externalId : "Sem identificador do banco"}</p></div>
-            <select value={entry.categoryId} disabled={entry.ignored || account?.type === "CREDIT_CARD" && entry.signedAmount > 0} onChange={(event) => updateEntry(entry.id, { categoryId: event.target.value })} className="rounded-lg border border-white/10 bg-slate-800 px-2 py-2 text-xs text-white"><option value="">Sem categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.parentName ? category.parentName + " › " : ""}{category.name}</option>)}</select>
+            <TransactionCategoryPicker categories={categories} value={entry.categoryId} direction={entry.signedAmount > 0 ? "INCOME" : "EXPENSE"} disabled={entry.ignored || account?.type === "CREDIT_CARD" && entry.signedAmount > 0} onChange={(categoryId) => updateEntry(entry.id, { categoryId })} compact />
             <strong className={entry.signedAmount > 0 ? "text-emerald-300 text-sm text-right" : "text-rose-300 text-sm text-right"}>{entry.signedAmount > 0 ? "+" : "-"}{currency(entry.signedAmount)}</strong>
             <button type="button" onClick={() => updateEntry(entry.id, { ignored: !entry.ignored })} title={entry.ignored ? "Importar item" : "Ignorar item"} className={"rounded-lg p-2 " + (entry.ignored ? "bg-white/5 text-slate-400" : "bg-rose-500/10 text-rose-300")}>{entry.ignored ? <Check className="w-4 h-4"/> : <X className="w-4 h-4"/>}</button>
           </div>)}
