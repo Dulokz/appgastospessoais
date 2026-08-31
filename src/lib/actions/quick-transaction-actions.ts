@@ -137,5 +137,5 @@ export async function createQuickTransactionV2(data: {
     }
   });
 
-  ["/", "/contas", "/patrimonio", "/meu-patrimonio", "/transacoes", "/resultado-mes", "/dividas"].forEach(revalidatePath);
+  ["/", "/contas", "/patrimonio", "/meu-patrimonio", "/transacoes", "/resultado-mes", "/dividas"].forEach((path) => revalidatePath(path));
 }
