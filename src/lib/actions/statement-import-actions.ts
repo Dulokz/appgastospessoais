@@ -13,7 +13,7 @@ type ImportedEntry = {
   externalId?: string | null;
   categoryId?: string | null;
   ignored?: boolean;
-  importKind?: "TRANSFER";
+  importKind?: "TRANSFER_IN" | "TRANSFER_OUT";
   sourceAccountId?: string | null;
 };
 
@@ -61,7 +61,7 @@ export async function commitStatementImport(input: {
       ignored++;
       continue;
     }
-    if (entry.importKind !== "TRANSFER" && entry.categoryId && !validCategories.has(entry.categoryId)) {
+    if (!entry.importKind && entry.categoryId && !validCategories.has(entry.categoryId)) {
       throw new Error("Uma das categorias escolhidas não pertence ao seu cadastro.");
     }
 
@@ -93,9 +93,10 @@ export async function commitStatementImport(input: {
 
     const amount = new Decimal(Math.abs(entry.signedAmount));
     const isCredit = entry.signedAmount > 0;
-    const isTransfer = entry.importKind === "TRANSFER";
+    const isTransfer = !!entry.importKind;
     if (isTransfer) {
-      if (!isCredit) throw new Error(`A linha ${index + 1} marcada como transferência precisa entrar na conta deste extrato.`);
+      if (entry.importKind === "TRANSFER_IN" && !isCredit) throw new Error(`A linha ${index + 1} marcada como resgate precisa entrar na conta deste extrato.`);
+      if (entry.importKind === "TRANSFER_OUT" && isCredit) throw new Error(`A linha ${index + 1} marcada como aplicação precisa sair da conta deste extrato.`);
       if (!entry.sourceAccountId || entry.sourceAccountId === account.id) {
         throw new Error(`Escolha a conta/aplicação de origem para “${entry.description.trim()}”.`);
       }
@@ -116,8 +117,8 @@ export async function commitStatementImport(input: {
           await tx.transaction.create({
             data: {
               userId,
-              accountId: source.id,
-              destinationAccountId: account.id,
+              accountId: entry.importKind === "TRANSFER_OUT" ? account.id : source.id,
+              destinationAccountId: entry.importKind === "TRANSFER_OUT" ? source.id : account.id,
               date,
               description: entry.description.trim(),
               amount,
@@ -130,8 +131,8 @@ export async function commitStatementImport(input: {
               allocations: { create: [{ allocationType: "TRANSFER", amount }] },
             },
           });
-          await tx.account.update({ where: { id: source.id }, data: { calculatedBalance: { decrement: amount } } });
-          await tx.account.update({ where: { id: account.id }, data: { calculatedBalance: { increment: amount } } });
+          await tx.account.update({ where: { id: entry.importKind === "TRANSFER_OUT" ? account.id : source.id }, data: { calculatedBalance: { decrement: amount } } });
+          await tx.account.update({ where: { id: entry.importKind === "TRANSFER_OUT" ? source.id : account.id }, data: { calculatedBalance: { increment: amount } } });
           return;
         }
 
