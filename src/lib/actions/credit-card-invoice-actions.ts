@@ -6,7 +6,7 @@ import { getDefaultUserId } from "@/lib/auth-user";
 import { Decimal } from "@/lib/decimal";
 
 function refresh() {
-  ["/", "/contas", "/cartoes", "/transacoes", "/resultado-mes", "/meu-patrimonio"].forEach(revalidatePath);
+  ["/", "/contas", "/cartoes", "/transacoes", "/resultado-mes", "/meu-patrimonio"].forEach((path) => revalidatePath(path));
 }
 
 function invoiceKeyForDate(date: Date, closingDay?: number | null) {
