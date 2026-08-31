@@ -30,5 +30,5 @@ export async function recategorizeTransactions(input: { transactionIds: string[]
     });
   });
 
-  ["/", "/transacoes", "/categorias", "/resultado-mes", "/relatorios"].forEach(revalidatePath);
+  ["/", "/transacoes", "/categorias", "/resultado-mes", "/relatorios"].forEach((path) => revalidatePath(path));
 }
