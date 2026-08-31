@@ -4,7 +4,7 @@ import { StatementImportClient } from "@/components/imports/StatementImportClien
 
 export default async function ImportarPage() {
   const userId = await getDefaultUserId();
-  const [accounts, categories] = await Promise.all([
+  const [accounts, categories, rules] = await Promise.all([
     db.account.findMany({
       where: { userId, active: true },
       include: { financialInstitution: { select: { name: true } } },
@@ -15,6 +15,7 @@ export default async function ImportarPage() {
       include: { parent: { select: { name: true } } },
       orderBy: { name: "asc" },
     }),
+    db.importClassificationRule.findMany({ where: { userId, active: true } }),
   ]);
 
   return (
@@ -30,6 +31,7 @@ export default async function ImportarPage() {
         name: category.name,
         parentName: category.parent?.name || null,
       }))}
+      rules={rules.filter((rule) => rule.action === "TRANSFER_IN" || rule.action === "TRANSFER_OUT").map((rule) => ({ matchText: rule.matchText, action: rule.action as "TRANSFER_IN" | "TRANSFER_OUT", counterpartAccountId: rule.counterpartAccountId }))}
     />
   );
 }
