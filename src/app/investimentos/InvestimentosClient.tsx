@@ -64,7 +64,14 @@ export function InvestimentosClient({
   const [isRecordEventOpen, setIsRecordEventOpen] = useState<InvestmentPositionItemData | null>(null);
 
   // Add Position Form State
-  const investmentInstitutions = Array.from(new Map(accounts.filter((account) => account.financialInstitutionId).map((account) => [account.financialInstitutionId, account.financialInstitutionName || "Instituição"])).entries()).map(([id, name]) => ({ id, name }));
+  const investmentInstitutions = Array.from(
+    new Map(
+      accounts.flatMap((account) => account.financialInstitutionId
+        ? [[account.financialInstitutionId, account.financialInstitutionName || "Instituição"] as const]
+        : [],
+      ),
+    ).entries(),
+  ).map(([id, name]) => ({ id, name }));
   const visibleCashAccounts = accounts.filter((account) => !["INVESTMENT", "BROKERAGE"].includes(account.type));
   const positionAccountIds = new Set(positions.map((position) => position.accountId));
   const accountsForSummary = accounts.filter((account) => !(positionAccountIds.has(account.id) && account.type === "INVESTMENT" && Number(account.calculatedBalance) === 0));
