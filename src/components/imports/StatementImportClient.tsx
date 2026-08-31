@@ -11,7 +11,7 @@ type Category = { id: string; name: string; parentName?: string | null };
 type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER_IN" | "TRANSFER_OUT"; sourceAccountId?: string };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
-const transferKindFor = (description: string, signedAmount: number) => { const name = description.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase(); if (/resgate\\s+(?:da?\\s*)?(?:poupanca|aplicacao)|ourocap/.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
+const transferKindFor = (description: string, signedAmount: number) => { const name = description.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase(); if (/resgate\s+(?:da?\\s*)?(?:poupanca|aplicacao)|ourocap/.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
 
 function parseMoney(value: string) {
   const clean = value.replace(/[^0-9,.-]/g, "").trim();
