@@ -123,7 +123,6 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const [result, setResult] = useState<{ imported: number; duplicates: number; ignored: number } | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const [bulkCategory, setBulkCategory] = useState("");
-  const [bulkTransferSource, setBulkTransferSource] = useState("");
   const [query, setQuery] = useState("");
 
   const visible = useMemo(() => entries.filter((entry) => entry.description.toLowerCase().includes(query.toLowerCase())), [entries, query]);
@@ -134,6 +133,11 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const isBancoDoBrasil = account?.institutionName?.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase() === "banco do brasil";
   const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind;
   const transferEntries = entries.filter((entry) => !entry.ignored && isAutomaticTransfer(entry));
+  const ruleFor = (entry: Entry) => /ourocap/i.test(entry.description) ? "OUROCAP" : "POUPANCA";
+  const transferRules = [
+    { key: "POUPANCA", title: "Poupança automática BB", help: "Resgate: Poupança → Conta Corrente BB" },
+    { key: "OUROCAP", title: "Ourocap BB", help: "Aplicação: Conta Corrente BB → Ourocap · Resgate: Ourocap → Conta Corrente BB" },
+  ].filter((rule) => transferEntries.some((entry) => ruleFor(entry) === rule.key));
   const transferSources = accounts.filter((item) => item.id !== accountId && item.type !== "CREDIT_CARD");
 
   const updateEntry = (id: string, patch: Partial<Entry>) => setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
@@ -192,7 +196,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
     </section>
 
     {entries.length > 0 && <section className="space-y-4">
-      {transferEntries.length > 0 && <div className="rounded-2xl border border-violet-400/25 bg-violet-500/10 p-4 text-sm text-violet-100"><div className="flex flex-col gap-3 sm:flex-row sm:items-center"><p className="flex-1"><strong>Movimentação de aplicação identificada.</strong> Escolha a conta vinculada (Poupança ou Ourocap). Aplicações e resgates serão transferências internas, nunca despesa ou receita.</p><div className="w-full sm:w-72"><AccountPicker accounts={transferSources} value={bulkTransferSource} onChange={(sourceAccountId) => { setBulkTransferSource(sourceAccountId); setEntries((current) => current.map((entry) => !!isAutomaticTransfer(entry) && !entry.ignored ? { ...entry, sourceAccountId } : entry)); }} placeholder="Escolher origem dos resgates" disabled={!accountId} /></div></div></div>}
+      {transferEntries.length > 0 && <div className="grid gap-3 md:grid-cols-2">{transferRules.map((rule) => { const ruleEntries = transferEntries.filter((entry) => ruleFor(entry) === rule.key); const selectedSource = ruleEntries.find((entry) => entry.sourceAccountId)?.sourceAccountId || ""; return <div key={rule.key} className="rounded-2xl border border-violet-400/25 bg-violet-500/10 p-4 text-sm text-violet-100"><strong>{rule.title}</strong><p className="mt-1 text-xs text-violet-200">{rule.help}</p><div className="mt-3"><AccountPicker accounts={transferSources} value={selectedSource} onChange={(sourceAccountId) => setEntries((current) => current.map((entry) => isAutomaticTransfer(entry) && ruleFor(entry) === rule.key ? { ...entry, sourceAccountId } : entry))} placeholder={`Vincular ${rule.title}`} disabled={!accountId} /></div></div>})}</div>}
       <div className="glass-card rounded-2xl p-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex-1"><strong className="text-white">{pending.length} itens prontos para revisar</strong><p className="text-xs text-muted-foreground">Selecione vários e aplique uma categoria de uma vez.</p></div>
         <div className="w-full max-w-xs"><TransactionCategoryPicker categories={categories} value={bulkCategory} direction={bulkDirection} onChange={setBulkCategory} compact /></div>
