@@ -11,7 +11,7 @@ type Category = { id: string; name: string; parentName?: string | null };
 type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER_IN" | "TRANSFER_OUT"; sourceAccountId?: string };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
-const transferKindFor = (description: string, signedAmount: number) => { const name = description.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase(); if (/resgate\s+(?:da?\\s*)?(?:poupanca|aplicacao)|ourocap/.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
+const transferKindFor = (description: string, signedAmount: number) => { const name = description.toLocaleLowerCase("pt-BR"); if (/resgate\s+(?:da?\s*)?(?:poupan[cç]a|aplica[cç][aã]o)|ourocap/i.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
 
 function parseMoney(value: string) {
   const clean = value.replace(/[^0-9,.-]/g, "").trim();
@@ -128,7 +128,7 @@ export function StatementImportClient({ accounts, categories }: { accounts: Acco
   const visible = useMemo(() => entries.filter((entry) => entry.description.toLowerCase().includes(query.toLowerCase())), [entries, query]);
   const pending = entries.filter((entry) => !entry.ignored);
   const account = accounts.find((item) => item.id === accountId);
-  const isBancoDoBrasil = account?.institutionName?.normalize("NFD").replace(/[\\u0300-\\u036f]/g, "").toLowerCase() === "banco do brasil";
+  const isBancoDoBrasil = (account?.institutionName || "").toLocaleLowerCase("pt-BR").includes("banco do brasil");
   const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind;
   const selectedEntries = entries.filter((entry) => selected.includes(entry.id) && !isAutomaticTransfer(entry));
   const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
