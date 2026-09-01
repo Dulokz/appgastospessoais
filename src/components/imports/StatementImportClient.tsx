@@ -216,7 +216,7 @@ export function StatementImportClient({ accounts, categories, rules }: { account
         <button type="button" disabled={!bulkCategory || !selected.length} onClick={() => { setEntries((current) => current.map((entry) => selected.includes(entry.id) && !isAutomaticTransfer(entry) ? { ...entry, categoryId: bulkCategory } : entry)); setBulkCategory(""); }} className="rounded-xl bg-cyan-500/15 px-3 py-2 text-sm font-bold text-cyan-200 disabled:opacity-40">Aplicar em {selected.length || "..."}</button>
       </div>
 
-      <div className="rounded-3xl border border-white/10 overflow-hidden bg-slate-950">
+      <div className="rounded-3xl border border-white/10 overflow-visible bg-slate-950">
         <div className="flex items-center gap-2 border-b border-white/10 p-3"><Search className="w-4 h-4 text-muted-foreground"/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar item do extrato..." className="w-full bg-transparent text-sm text-white outline-none"/><button type="button" onClick={() => setSelected(selected.length === pending.length ? [] : pending.map((entry) => entry.id))} className="text-xs text-cyan-300">{selected.length === pending.length ? "Limpar seleção" : "Selecionar pendentes"}</button></div>
         <div className="divide-y divide-white/5">
           {visible.map((entry) => <div key={entry.id} className={"grid gap-3 p-3 md:grid-cols-[24px_96px_1fr_190px_120px_32px] md:items-center " + (entry.ignored ? "opacity-45" : "")}>
