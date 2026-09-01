@@ -8,8 +8,8 @@ import { AccountPicker } from "@/components/accounts/AccountPicker";
 
 type Account = { id: string; name: string; type: string; institutionName?: string | null };
 type Category = { id: string; name: string; parentName?: string | null };
-type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER_IN" | "TRANSFER_OUT"; sourceAccountId?: string };
-type ImportRule = { matchText: string; action: "TRANSFER_IN" | "TRANSFER_OUT"; counterpartAccountId: string | null };
+type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL"; sourceAccountId?: string; investmentPositionId?: string };
+type ImportRule = { matchText: string; action: Entry["importKind"]; counterpartAccountId: string | null; investmentPositionId: string | null };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
 const transferKindFor = (description: string, signedAmount: number): Entry["importKind"] => { const name = description.toLocaleLowerCase("pt-BR"); if (/resgate\s+(?:da?\s*)?(?:poupan[cç]a|aplica[cç][aã]o)|ourocap/i.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
@@ -130,7 +130,7 @@ export function StatementImportClient({ accounts, categories, rules }: { account
   const pending = entries.filter((entry) => !entry.ignored);
   const account = accounts.find((item) => item.id === accountId);
   const isBancoDoBrasil = (account?.institutionName || "").toLocaleLowerCase("pt-BR").includes("banco do brasil");
-  const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind && !!entry.sourceAccountId;
+  const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind && (!!entry.sourceAccountId || !!entry.investmentPositionId);
   const selectedEntries = entries.filter((entry) => selected.includes(entry.id) && !isAutomaticTransfer(entry));
   const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
   const transferEntries = entries.filter((entry) => !entry.ignored && isAutomaticTransfer(entry));
@@ -157,7 +157,7 @@ export function StatementImportClient({ accounts, categories, rules }: { account
       const classified = parsed.map((entry) => {
         const normalized = entry.description.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
         const rule = bankIsBB ? rules.find((item) => item.counterpartAccountId && normalized.includes(item.matchText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase())) : null;
-        return rule ? { ...entry, importKind: rule.action, sourceAccountId: rule.counterpartAccountId! } : entry;
+        return rule ? { ...entry, importKind: rule.action, sourceAccountId: rule.counterpartAccountId || undefined, investmentPositionId: rule.investmentPositionId || undefined } : entry;
       });
       setEntries(classified); setFileName(file.name); setSelected(classified.filter((entry) => !entry.ignored).map((entry) => entry.id));
     } catch (cause: any) {
