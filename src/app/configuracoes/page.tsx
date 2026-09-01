@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import { getDefaultUserId } from "@/lib/auth-user";
 import { Settings, Shield, User, Database, Calendar, RefreshCw, PlusCircle, Pencil, CheckCircle2 } from "lucide-react";
 import Link from "next/link";
+import { ImportRulesClient } from "./ImportRulesClient";
 
 export const dynamic = "force-dynamic";
 
@@ -20,11 +21,16 @@ async function getConfiguracoesData() {
     },
   });
 
-  return { user };
+  const [accounts, investments, rules] = await Promise.all([
+    db.account.findMany({ where: { userId, active: true }, include: { financialInstitution: { select: { name: true } } }, orderBy: { name: "asc" } }),
+    db.investmentPosition.findMany({ where: { userId, active: true }, include: { instrument: true, account: { include: { financialInstitution: true } } }, orderBy: { createdAt: "asc" } }),
+    db.importClassificationRule.findMany({ where: { userId, active: true }, orderBy: { createdAt: "asc" } }),
+  ]);
+  return { user, accounts, investments, rules };
 }
 
 export default async function ConfiguracoesPage() {
-  const { user } = await getConfiguracoesData();
+  const { user, accounts, investments, rules } = await getConfiguracoesData();
   const startDateStr = user?.controlStartDate
     ? new Date(user.controlStartDate).toLocaleDateString("pt-BR")
     : "Não definida";
@@ -128,6 +134,11 @@ export default async function ConfiguracoesPage() {
           </div>
         </div>
       </div>
+      <ImportRulesClient
+        accounts={accounts.map((account) => ({ id: account.id, name: account.name, institutionName: account.financialInstitution?.name || null }))}
+        investments={investments.map((position) => ({ id: position.id, name: position.instrument.name, institutionName: position.account.financialInstitution?.name || null }))}
+        rules={rules.map((rule) => ({ id: rule.id, matchText: rule.matchText, action: rule.action as "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL", targetType: rule.investmentPositionId ? "INVESTMENT" as const : "ACCOUNT" as const, targetId: rule.investmentPositionId || rule.counterpartAccountId || "", targetName: rule.investmentPositionId ? investments.find((position) => position.id === rule.investmentPositionId)?.instrument.name || null : accounts.find((account) => account.id === rule.counterpartAccountId)?.name || null }))}
+      />
     </div>
   );
 }

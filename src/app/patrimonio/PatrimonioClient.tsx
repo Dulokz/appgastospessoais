@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatCurrencyBRL } from "@/lib/decimal";
 import { createAssetWithEntryMethod } from "@/lib/actions/db-actions";
+import { archiveAsset, updateAssetProfile } from "@/lib/actions/financial-record-management-actions";
 import { CategorySelector } from "@/components/categories/CategorySelector";
 import {
   Building,
@@ -12,6 +13,8 @@ import {
   Briefcase,
   X,
   Building2,
+  Pencil,
+  Archive,
 } from "lucide-react";
 
 interface AssetData {
@@ -57,6 +60,29 @@ export function PatrimonioClient({ initialAssets, accounts, categories }: Patrim
   const totalPhysicalAssets = assets
     .filter((a) => a.considerInNetWorth)
     .reduce((acc, a) => acc + a.currentValue, 0);
+
+  const handleRevalueAsset = async (asset: AssetData) => {
+    const raw = prompt(`Novo valor de mercado para "${asset.name}"`, String(asset.currentValue));
+    if (raw === null) return;
+    const value = Number(raw.replace(",", "."));
+    if (!Number.isFinite(value) || value < 0) return alert("Informe um valor válido.");
+    try {
+      await updateAssetProfile({ id: asset.id, name: asset.name, category: asset.category, currentValue: value, considerInNetWorth: asset.considerInNetWorth });
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível reavaliar o bem.");
+    }
+  };
+
+  const handleArchiveAsset = async (asset: AssetData) => {
+    if (!confirm(`Arquivar "${asset.name}"? Ele deixará de compor o patrimônio atual, mas seu histórico será preservado.`)) return;
+    try {
+      await archiveAsset(asset.id);
+      window.location.reload();
+    } catch (e: any) {
+      alert(e.message || "Não foi possível arquivar o bem.");
+    }
+  };
 
   const handleSaveAsset = async () => {
     if (!assetName.trim() || !currentValueStr) {
@@ -166,9 +192,10 @@ export function PatrimonioClient({ initialAssets, accounts, categories }: Patrim
                   </div>
                 </div>
 
-                <span className="px-2.5 py-1 rounded-full bg-emerald-500/10 text-emerald-400 text-[11px] font-semibold">
-                  Ativo
-                </span>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => handleRevalueAsset(asset)} title="Reavaliar bem" className="p-2 rounded-xl bg-cyan-500/10 text-cyan-300"><Pencil className="w-3.5 h-3.5" /></button>
+                  <button onClick={() => handleArchiveAsset(asset)} title="Arquivar bem" className="p-2 rounded-xl bg-rose-500/10 text-rose-300"><Archive className="w-3.5 h-3.5" /></button>
+                </div>
               </div>
 
               <div className="pt-3 border-t border-white/5 flex items-center justify-between">

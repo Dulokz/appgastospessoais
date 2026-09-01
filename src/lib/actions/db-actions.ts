@@ -45,10 +45,35 @@ export async function getOnboardingState() {
     step: user?.onboardingStep || 1,
     controlStartDate: user?.controlStartDate ? user.controlStartDate.toISOString().split("T")[0] : null,
     isCompleted: user?.onboardingStatus === "COMPLETED" || !!user?.onboardingCompletedAt,
-    accounts: existingAccounts,
-    investments: existingInvestments,
-    assets: existingAssets,
-    liabilities: existingLiabilities,
+    // Server Actions só podem devolver dados serializáveis ao componente cliente.
+    accounts: existingAccounts.map((account) => ({
+      ...account,
+      initialBalance: Number(account.initialBalance),
+      calculatedBalance: Number(account.calculatedBalance),
+      confirmedBalance: account.confirmedBalance === null ? null : Number(account.confirmedBalance),
+      reconciliationDiff: Number(account.reconciliationDiff),
+    })),
+    investments: existingInvestments.map((position) => ({
+      ...position,
+      quantity: position.quantity === null ? null : Number(position.quantity),
+      averageCost: position.averageCost === null ? null : Number(position.averageCost),
+      currentPrice: position.currentPrice === null ? null : Number(position.currentPrice),
+      currentValue: Number(position.currentValue),
+      acquisitionValue: Number(position.acquisitionValue),
+    })),
+    assets: existingAssets.map((asset) => ({
+      ...asset,
+      acquisitionValue: Number(asset.acquisitionValue),
+      paidEquityValue: asset.paidEquityValue === null ? null : Number(asset.paidEquityValue),
+      currentValue: Number(asset.currentValue),
+    })),
+    liabilities: existingLiabilities.map((liability) => ({
+      ...liability,
+      originalValue: Number(liability.originalValue),
+      currentBalance: Number(liability.currentBalance),
+      interestRate: liability.interestRate === null ? null : Number(liability.interestRate),
+      installmentValue: liability.installmentValue === null ? null : Number(liability.installmentValue),
+    })),
   };
 }
 
@@ -137,39 +162,72 @@ export async function createAccount(data: {
   type: string;
   institutionName?: string;
   initialBalance: number;
+  creditCardClosingDay?: number;
+  creditCardDueDay?: number;
 }) {
   const userId = await getDefaultUserId();
+  const name = data.name.trim();
+  const institutionName = data.institutionName?.trim();
+
+  if (!name) throw new Error("Informe um nome para a conta ou cartão.");
+  if (data.type !== "CASH" && !institutionName) {
+    throw new Error("Selecione ou informe a instituição.");
+  }
+  const closingDay = data.creditCardClosingDay ?? 25;
+  const dueDay = data.creditCardDueDay ?? 5;
+  if (data.type === "CREDIT_CARD" && (!Number.isInteger(closingDay) || !Number.isInteger(dueDay) || closingDay < 1 || closingDay > 31 || dueDay < 1 || dueDay > 31)) {
+    throw new Error("Informe dias válidos de fechamento e vencimento do cartão.");
+  }
 
   return db.$transaction(async (tx) => {
     let institutionId: string | undefined;
-    if (data.institutionName) {
+    if (institutionName) {
       let inst = await tx.financialInstitution.findFirst({
-        where: { userId, name: data.institutionName },
+        where: { userId, name: institutionName },
       });
       if (!inst) {
         inst = await tx.financialInstitution.create({
-          data: { userId, name: data.institutionName },
+          data: { userId, name: institutionName },
         });
       }
       institutionId = inst.id;
+    }
+
+    const duplicate = await tx.account.findFirst({
+      where: {
+        userId,
+        active: true,
+        name: { equals: name, mode: "insensitive" },
+        type: data.type,
+        financialInstitutionId: institutionId ?? null,
+      },
+      select: { id: true },
+    });
+
+    if (duplicate) {
+      throw new Error("Já existe uma conta ativa com este nome, tipo e instituição.");
     }
 
     const newAccount = await tx.account.create({
       data: {
         userId,
         financialInstitutionId: institutionId,
-        name: data.name,
+        name,
         type: data.type,
         initialBalance: data.initialBalance,
         calculatedBalance: data.initialBalance,
         confirmedBalance: data.initialBalance,
+        creditCardClosingDay: data.type === "CREDIT_CARD" ? closingDay : null,
+        creditCardDueDay: data.type === "CREDIT_CARD" ? dueDay : null,
       },
     });
 
     revalidatePath("/");
     revalidatePath("/contas");
+    revalidatePath("/cartoes");
     revalidatePath("/investimentos");
-    return newAccount;
+    revalidatePath("/meu-patrimonio");
+    return { id: newAccount.id };
   });
 }
 
@@ -181,7 +239,9 @@ export async function archiveAccount(id: string) {
   });
   revalidatePath("/");
   revalidatePath("/contas");
+  revalidatePath("/cartoes");
   revalidatePath("/investimentos");
+  revalidatePath("/meu-patrimonio");
 }
 
 // ----------------------------------------------------
@@ -628,6 +688,11 @@ export async function seedDefaultCategories() {
 // ----------------------------------------------------
 // TRANSAÇÕES & QUICK REGISTER
 // ----------------------------------------------------
+function getCardInvoiceKey(date: Date, closingDay?: number | null) {
+  const reference = new Date(date);
+  if (reference.getDate() > (closingDay || 25)) reference.setMonth(reference.getMonth() + 1);
+  return `${reference.getFullYear()}-${String(reference.getMonth() + 1).padStart(2, "0")}`;
+}
 export async function getTransactions() {
   const userId = await getDefaultUserId();
   return db.transaction.findMany({
@@ -674,6 +739,7 @@ export async function createQuickTransaction(data: {
           transactionType: "EXPENSE",
           categoryId: data.categoryId,
           description: data.description,
+          cardInvoiceKey: sourceAcc.type === "CREDIT_CARD" ? getCardInvoiceKey(new Date(), sourceAcc.creditCardClosingDay) : null,
           allocations: {
             create: [
               {
@@ -786,7 +852,9 @@ export async function getInvestmentPositions() {
 }
 
 export async function createInvestmentPosition(data: {
-  accountId: string;
+  accountId?: string;
+  financialInstitutionId?: string;
+  sourceAccountId?: string;
   instrumentName: string;
   symbol?: string;
   exchange?: string;
@@ -800,9 +868,42 @@ export async function createInvestmentPosition(data: {
   const userId = await getDefaultUserId();
 
   return db.$transaction(async (tx) => {
-    const targetAccount = await tx.account.findFirst({
-      where: { id: data.accountId, userId },
-    });
+    let targetAccount = data.financialInstitutionId
+      ? await tx.account.findFirst({
+          where: {
+            userId,
+            financialInstitutionId: data.financialInstitutionId,
+            active: true,
+            type: "INVESTMENT",
+          },
+          orderBy: { createdAt: "asc" },
+        })
+      : null;
+
+    if (!targetAccount && data.financialInstitutionId) {
+      const institution = await tx.financialInstitution.findFirst({
+        where: { id: data.financialInstitutionId, userId },
+      });
+      if (!institution) throw new Error("Instituição não pertence ao usuário.");
+
+      // Registro interno: agrupa produtos da mesma instituição, mas não é uma
+      // conta de dinheiro e não deve aparecer para a pessoa usar no dia a dia.
+      targetAccount = await tx.account.create({
+        data: {
+          userId,
+          financialInstitutionId: institution.id,
+          name: "Carteira de investimentos",
+          type: "INVESTMENT",
+          initialBalance: 0,
+          calculatedBalance: 0,
+          confirmedBalance: 0,
+        },
+      });
+    }
+
+    if (!targetAccount && data.accountId) {
+      targetAccount = await tx.account.findFirst({ where: { id: data.accountId, userId } });
+    }
     if (!targetAccount) throw new Error("Conta de custódia não pertence ao usuário.");
 
     const normSymbol = data.symbol ? data.symbol.trim().toUpperCase() : null;
@@ -833,7 +934,7 @@ export async function createInvestmentPosition(data: {
     const position = await tx.investmentPosition.create({
       data: {
         userId,
-        accountId: data.accountId,
+        accountId: targetAccount.id,
         instrumentId: instrument.id,
         quantity: data.quantity || null,
         averageCost: data.averageCost || (data.quantity ? data.acquisitionValue / data.quantity : null),
@@ -865,10 +966,15 @@ export async function createInvestmentPosition(data: {
         },
       });
     } else {
+      if (!data.sourceAccountId) throw new Error("Informe a conta de onde saiu o dinheiro do aporte.");
+      const sourceAccount = await tx.account.findFirst({ where: { id: data.sourceAccountId, userId, active: true } });
+      if (!sourceAccount) throw new Error("Conta de origem não pertence ao usuário.");
+      if (sourceAccount.id === targetAccount.id) throw new Error("Escolha uma conta de dinheiro para o aporte.");
+
       const txRecord = await tx.transaction.create({
         data: {
           userId,
-          accountId: data.accountId,
+          accountId: sourceAccount.id,
           amount: data.acquisitionValue,
           direction: "DEBIT",
           transactionType: "INVESTMENT_CONTRIBUTION",
@@ -885,7 +991,7 @@ export async function createInvestmentPosition(data: {
       });
 
       await tx.account.update({
-        where: { id: data.accountId },
+        where: { id: sourceAccount.id },
         data: { calculatedBalance: { decrement: data.acquisitionValue } },
       });
 
@@ -906,16 +1012,19 @@ export async function createInvestmentPosition(data: {
     revalidatePath("/investimentos");
     revalidatePath("/contas");
     revalidatePath("/meu-patrimonio");
-    return position;
+    return { id: position.id };
   });
 }
 
 export async function updatePositionValue(data: {
   positionId: string;
   newCurrentValue: number;
+  date: string;
   notes?: string;
 }) {
   const userId = await getDefaultUserId();
+  const referenceDate = new Date(`${data.date}T12:00:00`);
+  if (Number.isNaN(referenceDate.getTime())) throw new Error("Informe uma data válida para a atualização.");
 
   return db.$transaction(async (tx) => {
     const position = await tx.investmentPosition.findFirst({
@@ -932,7 +1041,7 @@ export async function updatePositionValue(data: {
       where: { id: data.positionId },
       data: {
         currentValue: data.newCurrentValue,
-        lastPriceAt: new Date(),
+        lastPriceAt: referenceDate,
       },
     });
 
@@ -941,6 +1050,7 @@ export async function updatePositionValue(data: {
         investmentPositionId: position.id,
         quantity: position.quantity,
         currentValue: data.newCurrentValue,
+        date: referenceDate,
         source: "MANUAL",
       },
     });
@@ -952,7 +1062,8 @@ export async function updatePositionValue(data: {
           investmentPositionId: position.id,
           type: eventType,
           amount: Math.abs(diff),
-          notes: data.notes || "Atualização manual de valorização/desvalorização",
+          date: referenceDate,
+          notes: data.notes || `Saldo informado em ${referenceDate.toLocaleDateString("pt-BR")}`,
         },
       });
     }
@@ -961,8 +1072,83 @@ export async function updatePositionValue(data: {
     revalidatePath("/investimentos");
     revalidatePath("/relatorios");
     revalidatePath("/meu-patrimonio");
-    return updated;
+    return { id: updated.id, currentValue: updated.currentValue.toNumber() };
   });
+}
+
+/**
+ * Exclui uma posição de investimento e todos os registros que só existem por
+ * causa dela. Movimentos financeiros vinculados também são desfeitos para que
+ * conta, patrimônio, histórico e relatórios não fiquem divergentes.
+ */
+export async function deleteInvestmentPosition(positionId: string) {
+  const userId = await getDefaultUserId();
+
+  await db.$transaction(async (tx) => {
+    const position = await tx.investmentPosition.findFirst({
+      where: { id: positionId, userId },
+      include: {
+        events: {
+          select: { transactionId: true },
+        },
+      },
+    });
+
+    if (!position) throw new Error("Investimento não encontrado ou não pertence ao usuário.");
+
+    const transactionIds = [...new Set(position.events.map((event) => event.transactionId).filter(Boolean))] as string[];
+    const transactions = transactionIds.length
+      ? await tx.transaction.findMany({
+          where: { id: { in: transactionIds }, userId },
+          select: { id: true, accountId: true, amount: true, direction: true, source: true },
+        })
+      : [];
+
+    // Nunca apague um lançamento vindo do banco, nem um lançamento que esteja
+    // ligado a mais de uma posição. Nesses casos a exclusão precisaria de uma
+    // decisão explícita de conciliação, e não pode ocorrer silenciosamente.
+    const references = transactionIds.length
+      ? await tx.investmentEvent.groupBy({
+          by: ["transactionId"],
+          where: { transactionId: { in: transactionIds } },
+          _count: { transactionId: true },
+        })
+      : [];
+    const sharedTransactionIds = new Set(
+      references.filter((reference) => reference.transactionId && reference._count.transactionId > 1)
+        .map((reference) => reference.transactionId as string),
+    );
+    const protectedTransaction = transactions.find(
+      (transaction) => transaction.source === "IMPORT" || sharedTransactionIds.has(transaction.id),
+    );
+    if (protectedTransaction) {
+      throw new Error("Este investimento possui movimentações importadas ou compartilhadas. Para preservar a conciliação, remova primeiro o vínculo específico em Movimentar.");
+    }
+
+    // A relação com Transaction é opcional e não deve impedir a remoção.
+    await tx.investmentEvent.deleteMany({ where: { investmentPositionId: position.id } });
+
+    for (const transaction of transactions) {
+      await tx.account.update({
+        where: { id: transaction.accountId },
+        data: {
+          calculatedBalance: transaction.direction === "DEBIT"
+            ? { increment: transaction.amount }
+            : { decrement: transaction.amount },
+        },
+      });
+    }
+
+    if (transactionIds.length) {
+      await tx.transaction.deleteMany({ where: { id: { in: transactionIds }, userId } });
+    }
+
+    // Snapshots remanescentes são removidos pela relação em cascata.
+    await tx.investmentPosition.delete({ where: { id: position.id } });
+  });
+
+  ["/", "/contas", "/investimentos", "/meu-patrimonio", "/patrimonio", "/transacoes", "/resultado-mes", "/relatorios"].forEach((path) => revalidatePath(path));
+  return { id: positionId };
 }
 
 export async function recordInvestmentEvent(data: {
@@ -1121,6 +1307,6 @@ export async function recordInvestmentEvent(data: {
     revalidatePath("/transacoes");
     revalidatePath("/resultado-mes");
     revalidatePath("/meu-patrimonio");
-    return event;
+    return { id: event.id };
   });
 }

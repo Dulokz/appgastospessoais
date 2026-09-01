@@ -50,6 +50,9 @@ model User {
   netWorthSnapshots       NetWorthSnapshot[]
   accountBalanceSnapshots AccountBalanceSnapshot[]
   financialInstitutions   FinancialInstitution[]
+  recurringRules          RecurringRule[]
+  scheduledCommitments    ScheduledCommitment[]
+  importClassificationRules ImportClassificationRule[]
 }
 
 model FinancialInstitution {
@@ -84,6 +87,8 @@ model Account {
   lastSyncAt             DateTime?
   
   currency               String               @default("BRL")
+  creditCardClosingDay   Int?                 // 1..31; usado somente em cartões
+  creditCardDueDay       Int?                 // 1..31; usado somente em cartões
   active                 Boolean              @default(true)
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
@@ -94,6 +99,8 @@ model Account {
   balanceSnapshots       AccountBalanceSnapshot[]
   investmentPositions    InvestmentPosition[]
   investmentEvents       InvestmentEvent[]
+  recurringRules          RecurringRule[]
+  scheduledCommitments    ScheduledCommitment[]
 }
 
 model Instrument {
@@ -254,6 +261,8 @@ model Category {
 
   transactions Transaction[]
   allocations  TransactionAllocation[]
+  recurringRules RecurringRule[]
+  scheduledCommitments ScheduledCommitment[]
 }
 
 model Transaction {
@@ -271,6 +280,7 @@ model Transaction {
   transactionType      String               // INCOME, EXPENSE, TRANSFER, ASSET_PURCHASE, etc.
   categoryId           String?
   category             Category?            @relation(fields: [categoryId], references: [id])
+  cardInvoiceKey       String?              // Ex.: 2026-08; fatura a que pertence a compra/pagamento
   notes                String?
   
   // Idempotência e Integrações Futuras
@@ -288,6 +298,7 @@ model Transaction {
 
   @@unique([userId, accountId, externalId])
   @@unique([userId, accountId, importHash])
+  @@index([userId, cardInvoiceKey])
 }
 
 model TransactionAllocation {
@@ -333,4 +344,70 @@ model NetWorthSnapshot {
   netWorth         Decimal  @db.Decimal(18, 4) // totalAssets - totalLiabilities
   liquidNetWorth   Decimal? @db.Decimal(18, 4) // Ativos líquidos + investimentos - dívidas CP
   createdAt        DateTime @default(now())
+}
+
+
+model RecurringRule {
+  id                   String               @id @default(uuid())
+  userId               String
+  user                 User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId            String
+  account              Account              @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId           String?
+  category             Category?            @relation(fields: [categoryId], references: [id])
+  description          String
+  amount               Decimal              @db.Decimal(18, 4)
+  frequency            String               @default("MONTHLY")
+  startDate            DateTime
+  endDate              DateTime?
+  active               Boolean              @default(true)
+  notes                String?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+
+  scheduledCommitments ScheduledCommitment[]
+}
+
+model ScheduledCommitment {
+  id                   String          @id @default(uuid())
+  userId               String
+  user                 User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accountId            String
+  account              Account         @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  categoryId           String?
+  category             Category?       @relation(fields: [categoryId], references: [id])
+  recurringRuleId      String?
+  recurringRule        RecurringRule?  @relation(fields: [recurringRuleId], references: [id], onDelete: Cascade)
+  description          String
+  amount               Decimal         @db.Decimal(18, 4)
+  dueDate              DateTime
+  status               String          @default("PENDING") // PENDING, POSTED, SKIPPED
+  sourceType           String          // RECURRING, INSTALLMENT
+  groupId              String?
+  installmentNumber    Int?
+  totalInstallments    Int?
+  transactionId        String?
+  createdAt            DateTime        @default(now())
+  updatedAt            DateTime        @updatedAt
+
+  @@unique([recurringRuleId, dueDate])
+  @@index([userId, status, dueDate])
+}
+
+
+model ImportClassificationRule {
+  id                   String      @id @default(uuid())
+  userId               String
+  user                 User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  financialInstitution String?
+  matchText            String
+  action               String      // EXPENSE, INCOME, TRANSFER_IN, TRANSFER_OUT, INVESTMENT_CONTRIBUTION, INVESTMENT_WITHDRAWAL, APPRECIATION
+  counterpartAccountId String?
+  investmentPositionId String?
+  categoryId           String?
+  active               Boolean     @default(true)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+
+  @@index([userId, financialInstitution, active])
 }

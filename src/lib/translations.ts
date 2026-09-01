@@ -4,6 +4,7 @@ export const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   CASH: "Dinheiro / Carteira",
   BROKERAGE: "Corretora",
   INVESTMENT: "Conta de investimento",
+  CREDIT_CARD: "Cartão de crédito",
   OTHER: "Outra conta",
 };
 
@@ -33,6 +34,7 @@ export const TRANSACTION_TYPE_LABELS: Record<string, string> = {
   INCOME: "Receita",
   EXPENSE: "Despesa",
   TRANSFER: "Transferência neutra",
+  CARD_PAYMENT: "Pagamento de fatura",
   INVESTMENT_CONTRIBUTION: "Aporte em investimento",
   INVESTMENT_WITHDRAWAL: "Resgate de investimento",
   ASSET_PURCHASE: "Compra de patrimônio",

@@ -5,32 +5,34 @@ import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   Wallet,
-  Building2,
+  CreditCard,
   TrendingDown,
   ArrowRightLeft,
-  Tags,
-  PieChart,
   Settings,
   ShieldCheck,
   Receipt,
   Landmark,
   TrendingUp,
-  Rocket,
+  BarChart3,
+  History,
+  CalendarClock,
+  Upload,
 } from "lucide-react";
 import { clsx } from "clsx";
 
 const navItems = [
-  { name: "Dashboard", href: "/", icon: LayoutDashboard },
-  { name: "Onboarding (Inicialização)", href: "/onboarding", icon: Rocket },
-  { name: "Resultado do Mês", href: "/resultado-mes", icon: Receipt },
-  { name: "Meu Patrimônio", href: "/meu-patrimonio", icon: Landmark },
-  { name: "Carteira & Instituições", href: "/investimentos", icon: TrendingUp },
+  { name: "Visão Geral", href: "/", icon: LayoutDashboard },
+  { name: "Patrimônio", href: "/meu-patrimonio", icon: Landmark },
+  { name: "Meu Mês", href: "/resultado-mes", icon: Receipt },
+  { name: "Contas", href: "/contas", icon: Wallet },
+  { name: "Cartões", href: "/cartoes", icon: CreditCard },
+  { name: "Compromissos", href: "/compromissos", icon: CalendarClock },
+  { name: "Investimentos", href: "/investimentos", icon: TrendingUp },
+  { name: "Dívidas", href: "/dividas", icon: TrendingDown },
   { name: "Transações", href: "/transacoes", icon: ArrowRightLeft },
-  { name: "Patrimônio (Bens)", href: "/patrimonio", icon: Building2 },
-  { name: "Dívidas (Passivos)", href: "/dividas", icon: TrendingDown },
-  { name: "Contas & Liquidez", href: "/contas", icon: Wallet },
-  { name: "Categorias", href: "/categorias", icon: Tags },
-  { name: "Por que mudou?", href: "/relatorios", icon: PieChart },
+  { name: "Importar extrato", href: "/importar", icon: Upload },
+  { name: "Relatórios", href: "/relatorios", icon: BarChart3 },
+  { name: "Corrigir posição inicial", href: "/ajustar-posicao-inicial", icon: History },
   { name: "Configurações", href: "/configuracoes", icon: Settings },
 ];
 
@@ -38,14 +40,14 @@ export function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 border-r border-border glass-panel p-4 z-30">
+    <aside className="hidden md:flex flex-col w-64 h-screen sticky top-0 border-r border-border bg-background/95 p-4 z-30">
       <div className="flex items-center gap-3 px-3 py-4 mb-4">
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-emerald-500 to-cyan-500 flex items-center justify-center shadow-lg shadow-emerald-500/20">
-          <ShieldCheck className="w-6 h-6 text-white" />
+        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
+          <ShieldCheck className="w-6 h-6 text-emerald-400" />
         </div>
         <div>
           <h1 className="font-bold text-lg leading-tight tracking-tight text-white">Aegis Riqueza</h1>
-          <p className="text-xs text-muted-foreground font-medium">Gestão Patrimonial</p>
+          <p className="text-xs text-muted-foreground font-medium">Painel Financeiro</p>
         </div>
       </div>
 
@@ -58,9 +60,9 @@ export function Sidebar() {
               key={item.href}
               href={item.href}
               className={clsx(
-                "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-all duration-200",
+                "flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shadow-md shadow-emerald-500/10"
+                  ? "bg-white/8 text-white border border-white/10"
                   : "text-muted-foreground hover:text-white hover:bg-white/5"
               )}
             >
@@ -72,14 +74,8 @@ export function Sidebar() {
       </nav>
 
       <div className="pt-4 border-t border-border mt-auto">
-        <div className="p-3.5 rounded-xl glass-card flex items-center gap-3">
-          <div className="w-9 h-9 rounded-full bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center font-bold text-emerald-400 text-sm">
-            UP
-          </div>
-          <div className="overflow-hidden">
-            <p className="text-xs font-semibold text-white truncate">Usuário Principal</p>
-            <p className="text-[11px] text-muted-foreground truncate">usuario@patrimonio.com</p>
-          </div>
+        <div className="px-3 py-2 text-[11px] text-muted-foreground leading-relaxed">
+          Um número principal por tela. Mais clareza, menos ruído.
         </div>
       </div>
     </aside>
