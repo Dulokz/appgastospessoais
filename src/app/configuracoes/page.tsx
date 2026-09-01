@@ -21,15 +21,16 @@ async function getConfiguracoesData() {
     },
   });
 
-  const [accounts, rules] = await Promise.all([
+  const [accounts, investments, rules] = await Promise.all([
     db.account.findMany({ where: { userId, active: true }, include: { financialInstitution: { select: { name: true } } }, orderBy: { name: "asc" } }),
+    db.investmentPosition.findMany({ where: { userId, active: true }, include: { instrument: true, account: { include: { financialInstitution: true } } }, orderBy: { createdAt: "asc" } }),
     db.importClassificationRule.findMany({ where: { userId, active: true }, orderBy: { createdAt: "asc" } }),
   ]);
-  return { user, accounts, rules };
+  return { user, accounts, investments, rules };
 }
 
 export default async function ConfiguracoesPage() {
-  const { user, accounts, rules } = await getConfiguracoesData();
+  const { user, accounts, investments, rules } = await getConfiguracoesData();
   const startDateStr = user?.controlStartDate
     ? new Date(user.controlStartDate).toLocaleDateString("pt-BR")
     : "Não definida";
@@ -135,7 +136,8 @@ export default async function ConfiguracoesPage() {
       </div>
       <ImportRulesClient
         accounts={accounts.map((account) => ({ id: account.id, name: account.name, institutionName: account.financialInstitution?.name || null }))}
-        rules={rules.map((rule) => ({ id: rule.id, matchText: rule.matchText, action: rule.action, counterpartAccountId: rule.counterpartAccountId, counterpartName: accounts.find((account) => account.id === rule.counterpartAccountId)?.name || null }))}
+        investments={investments.map((position) => ({ id: position.id, name: position.instrument.name, institutionName: position.account.financialInstitution?.name || null }))}
+        rules={rules.map((rule) => ({ id: rule.id, matchText: rule.matchText, action: rule.action, targetName: rule.investmentPositionId ? investments.find((position) => position.id === rule.investmentPositionId)?.instrument.name || null : accounts.find((account) => account.id === rule.counterpartAccountId)?.name || null }))}
       />
     </div>
   );
