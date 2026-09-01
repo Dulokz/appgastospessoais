@@ -4,7 +4,7 @@ import { StatementImportClient } from "@/components/imports/StatementImportClien
 
 export default async function ImportarPage() {
   const userId = await getDefaultUserId();
-  const [accounts, categories, rules] = await Promise.all([
+  const [accounts, categories, rules, investments] = await Promise.all([
     db.account.findMany({
       where: { userId, active: true },
       include: { financialInstitution: { select: { name: true } } },
@@ -16,6 +16,7 @@ export default async function ImportarPage() {
       orderBy: { name: "asc" },
     }),
     db.importClassificationRule.findMany({ where: { userId, active: true } }),
+    db.investmentPosition.findMany({ where: { userId, active: true }, include: { instrument: true } }),
   ]);
 
   return (
@@ -31,7 +32,7 @@ export default async function ImportarPage() {
         name: category.name,
         parentName: category.parent?.name || null,
       }))}
-      rules={rules.filter((rule) => ["TRANSFER_IN", "TRANSFER_OUT", "INVESTMENT_CONTRIBUTION", "INVESTMENT_WITHDRAWAL"].includes(rule.action)).map((rule) => ({ matchText: rule.matchText, action: rule.action as "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL", counterpartAccountId: rule.counterpartAccountId, investmentPositionId: rule.investmentPositionId }))}
+      rules={rules.filter((rule) => ["TRANSFER_IN", "TRANSFER_OUT", "INVESTMENT_CONTRIBUTION", "INVESTMENT_WITHDRAWAL"].includes(rule.action)).map((rule) => ({ matchText: rule.matchText, action: rule.action as "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL", counterpartAccountId: rule.counterpartAccountId, investmentPositionId: rule.investmentPositionId, targetName: rule.investmentPositionId ? investments.find((position) => position.id === rule.investmentPositionId)?.instrument.name || undefined : accounts.find((account) => account.id === rule.counterpartAccountId)?.name || undefined }))}
     />
   );
 }
