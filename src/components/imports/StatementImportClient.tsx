@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, useMemo, useState } from "react";
+import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, FileSpreadsheet, FileText, Loader2, Search, ShieldCheck, Upload, X } from "lucide-react";
 import { commitStatementImport } from "@/lib/actions/statement-import-actions";
 import { TransactionCategoryPicker } from "@/components/categories/TransactionCategoryPicker";
@@ -12,7 +12,6 @@ type Entry = { id: string; date: string; description: string; detail?: string; s
 type ImportRule = { matchText: string; action: Entry["importKind"]; counterpartAccountId: string | null; investmentPositionId: string | null };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
-const transferKindFor = (description: string, signedAmount: number): Entry["importKind"] => { const name = description.toLocaleLowerCase("pt-BR"); if (/resgate\s+(?:da?\s*)?(?:poupan[cç]a|aplica[cç][aã]o)|ourocap/i.test(name)) return signedAmount > 0 ? "TRANSFER_IN" : "TRANSFER_OUT"; return undefined; };
 
 function parseMoney(value: string) {
   const clean = value.replace(/[^0-9,.-]/g, "").trim();
@@ -57,7 +56,6 @@ function parseOfx(text: string): Entry[] {
       detail,
       signedAmount: amount,
       categoryId: "",
-      importKind: transferKindFor(name, amount),
       // Linhas de saldo/fechamento não são fatos financeiros e não devem ser lançadas.
       ignored: !Number.isFinite(amount) || Math.abs(amount) < 0.005 || /^(saldo|balance)/i.test(name),
     };
@@ -141,6 +139,16 @@ export function StatementImportClient({ accounts, categories, rules }: { account
   ].filter((rule) => transferEntries.some((entry) => ruleFor(entry) === rule.key));
   const transferSources = accounts.filter((item) => item.id !== accountId && item.type !== "CREDIT_CARD");
 
+  const applySavedRules = (items: Entry[]) => {
+    const bankIsBB = (accounts.find((item) => item.id === accountId)?.institutionName || "").toLocaleLowerCase("pt-BR").includes("banco do brasil");
+    return items.map((entry) => {
+      const normalized = entry.description.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
+      const rule = bankIsBB ? rules.find((item) => (item.counterpartAccountId || item.investmentPositionId) && normalized.includes(item.matchText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase())) : null;
+      return rule ? { ...entry, importKind: rule.action, sourceAccountId: rule.counterpartAccountId || undefined, investmentPositionId: rule.investmentPositionId || undefined } : { ...entry, importKind: undefined, sourceAccountId: undefined, investmentPositionId: undefined };
+    });
+  };
+  useEffect(() => { if (entries.length) setEntries((current) => applySavedRules(current)); }, [accountId, rules]);
+
   const updateEntry = (id: string, patch: Partial<Entry>) => setEntries((current) => current.map((entry) => entry.id === id ? { ...entry, ...patch } : entry));
   const toggle = (id: string) => setSelected((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
 
@@ -153,12 +161,7 @@ export function StatementImportClient({ accounts, categories, rules }: { account
       const lower = file.name.toLowerCase();
       const parsed = lower.endsWith(".ofx") || lower.endsWith(".qfx") ? parseOfx(text) : lower.endsWith(".pdf") ? parsePdfText(text) : parseCsv(text);
       if (!parsed.length) throw new Error(lower.endsWith(".pdf") ? "Não consegui ler itens neste PDF. Ele pode ser escaneado ou protegido; exporte o extrato em OFX/CSV para uma importação segura." : "Não encontrei linhas com data e valor. Confira o formato do arquivo.");
-      const bankIsBB = (accounts.find((item) => item.id === accountId)?.institutionName || "").toLocaleLowerCase("pt-BR").includes("banco do brasil");
-      const classified = parsed.map((entry) => {
-        const normalized = entry.description.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase();
-        const rule = bankIsBB ? rules.find((item) => item.counterpartAccountId && normalized.includes(item.matchText.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toUpperCase())) : null;
-        return rule ? { ...entry, importKind: rule.action, sourceAccountId: rule.counterpartAccountId || undefined, investmentPositionId: rule.investmentPositionId || undefined } : entry;
-      });
+      const classified = applySavedRules(parsed);
       setEntries(classified); setFileName(file.name); setSelected(classified.filter((entry) => !entry.ignored).map((entry) => entry.id));
     } catch (cause: any) {
       setEntries([]); setError(cause.message || "Não foi possível ler o arquivo.");
