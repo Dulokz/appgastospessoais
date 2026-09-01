@@ -31,7 +31,7 @@ export default async function ImportarPage() {
         name: category.name,
         parentName: category.parent?.name || null,
       }))}
-      rules={rules.filter((rule) => rule.action === "TRANSFER_IN" || rule.action === "TRANSFER_OUT").map((rule) => ({ matchText: rule.matchText, action: rule.action as "TRANSFER_IN" | "TRANSFER_OUT", counterpartAccountId: rule.counterpartAccountId }))}
+      rules={rules.filter((rule) => ["TRANSFER_IN", "TRANSFER_OUT", "INVESTMENT_CONTRIBUTION", "INVESTMENT_WITHDRAWAL"].includes(rule.action)).map((rule) => ({ matchText: rule.matchText, action: rule.action as "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL", counterpartAccountId: rule.counterpartAccountId, investmentPositionId: rule.investmentPositionId }))}
     />
   );
 }
