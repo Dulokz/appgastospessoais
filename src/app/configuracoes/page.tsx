@@ -137,7 +137,7 @@ export default async function ConfiguracoesPage() {
       <ImportRulesClient
         accounts={accounts.map((account) => ({ id: account.id, name: account.name, institutionName: account.financialInstitution?.name || null }))}
         investments={investments.map((position) => ({ id: position.id, name: position.instrument.name, institutionName: position.account.financialInstitution?.name || null }))}
-        rules={rules.map((rule) => ({ id: rule.id, matchText: rule.matchText, action: rule.action, targetName: rule.investmentPositionId ? investments.find((position) => position.id === rule.investmentPositionId)?.instrument.name || null : accounts.find((account) => account.id === rule.counterpartAccountId)?.name || null }))}
+        rules={rules.map((rule) => ({ id: rule.id, matchText: rule.matchText, action: rule.action as "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL", targetType: rule.investmentPositionId ? "INVESTMENT" as const : "ACCOUNT" as const, targetId: rule.investmentPositionId || rule.counterpartAccountId || "", targetName: rule.investmentPositionId ? investments.find((position) => position.id === rule.investmentPositionId)?.instrument.name || null : accounts.find((account) => account.id === rule.counterpartAccountId)?.name || null }))}
       />
     </div>
   );
