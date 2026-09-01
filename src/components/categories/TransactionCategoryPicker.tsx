@@ -1,7 +1,7 @@
 "use client";
 
 import { Search, ChevronLeft, ChevronDown, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState } from "react";
 
 export type TransactionCategory = { id: string; name: string; parentName?: string | null };
 type Direction = "INCOME" | "EXPENSE";
@@ -34,6 +34,7 @@ export function TransactionCategoryPicker({
   compact?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const pickerId = useId();
   const [parent, setParent] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const selected = categoryLabel(value, categories);
@@ -59,9 +60,21 @@ export function TransactionCategoryPicker({
 
   const choose = (id: string) => { onChange(id); setOpen(false); setParent(null); setQuery(""); };
   const close = () => { setOpen(false); setParent(null); setQuery(""); };
+  useEffect(() => {
+    const onOtherPickerOpen = (event: Event) => {
+      if ((event as CustomEvent<string>).detail !== pickerId) close();
+    };
+    window.addEventListener("transaction-category-picker-open", onOtherPickerOpen);
+    return () => window.removeEventListener("transaction-category-picker-open", onOtherPickerOpen);
+  }, [pickerId]);
+  const toggle = () => setOpen((current) => {
+    const next = !current;
+    if (next) window.dispatchEvent(new CustomEvent("transaction-category-picker-open", { detail: pickerId }));
+    return next;
+  });
 
   return <div className="relative">
-    <button type="button" disabled={disabled} onClick={() => setOpen((current) => !current)} className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-xs transition-colors ${selected ? "border-cyan-400/25 bg-cyan-500/10 text-cyan-100" : "border-white/10 bg-slate-800 text-slate-300"} ${compact ? "py-2" : "py-2.5"} disabled:cursor-not-allowed disabled:opacity-40`}>
+    <button type="button" disabled={disabled} onClick={toggle} className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 text-left text-xs transition-colors ${selected ? "border-cyan-400/25 bg-cyan-500/10 text-cyan-100" : "border-white/10 bg-slate-800 text-slate-300"} ${compact ? "py-2" : "py-2.5"} disabled:cursor-not-allowed disabled:opacity-40`}>
       <span className="truncate">{selected || (direction === "INCOME" ? "Classificar receita" : "Classificar despesa")}</span><ChevronDown className="h-3.5 w-3.5 shrink-0" />
     </button>
 
