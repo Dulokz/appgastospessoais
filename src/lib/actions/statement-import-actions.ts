@@ -13,8 +13,9 @@ type ImportedEntry = {
   externalId?: string | null;
   categoryId?: string | null;
   ignored?: boolean;
-  importKind?: "TRANSFER_IN" | "TRANSFER_OUT";
+  importKind?: "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL";
   sourceAccountId?: string | null;
+  investmentPositionId?: string | null;
 };
 
 function invoiceKeyForDate(date: Date, closingDay?: number | null) {
@@ -93,7 +94,13 @@ export async function commitStatementImport(input: {
 
     const amount = new Decimal(Math.abs(entry.signedAmount));
     const isCredit = entry.signedAmount > 0;
-    const isTransfer = !!entry.importKind;
+    const isTransfer = entry.importKind === "TRANSFER_IN" || entry.importKind === "TRANSFER_OUT";
+    const isInvestmentEvent = entry.importKind === "INVESTMENT_CONTRIBUTION" || entry.importKind === "INVESTMENT_WITHDRAWAL";
+    if (isInvestmentEvent) {
+      if (entry.importKind === "INVESTMENT_CONTRIBUTION" && isCredit) throw new Error(`A linha ${index + 1} marcada como aplicação precisa sair da conta deste extrato.`);
+      if (entry.importKind === "INVESTMENT_WITHDRAWAL" && !isCredit) throw new Error(`A linha ${index + 1} marcada como resgate precisa entrar na conta deste extrato.`);
+      if (!entry.investmentPositionId) throw new Error(`Escolha o investimento para “${entry.description.trim()}”.`);
+    }
     if (isTransfer) {
       if (entry.importKind === "TRANSFER_IN" && !isCredit) throw new Error(`A linha ${index + 1} marcada como resgate precisa entrar na conta deste extrato.`);
       if (entry.importKind === "TRANSFER_OUT" && isCredit) throw new Error(`A linha ${index + 1} marcada como aplicação precisa sair da conta deste extrato.`);
@@ -107,6 +114,16 @@ export async function commitStatementImport(input: {
 
     try {
       await db.$transaction(async (tx) => {
+        if (isInvestmentEvent) {
+          const position = await tx.investmentPosition.findFirst({ where: { id: entry.investmentPositionId!, userId, active: true }, include: { instrument: true } });
+          if (!position) throw new Error("O investimento selecionado não está disponível.");
+          const contribution = entry.importKind === "INVESTMENT_CONTRIBUTION";
+          const transaction = await tx.transaction.create({ data: { userId, accountId: account.id, date, description: entry.description.trim(), amount, direction: contribution ? "DEBIT" : "CREDIT", transactionType: contribution ? "INVESTMENT_CONTRIBUTION" : "INVESTMENT_WITHDRAWAL", source: "IMPORT", externalId, importHash, notes: `Importado de ${input.sourceName} · ${contribution ? "Aplicação" : "Resgate"} em ${position.instrument.name}`, allocations: { create: [{ allocationType: "INVESTMENT", amount }] } } });
+          await tx.account.update({ where: { id: account.id }, data: { calculatedBalance: contribution ? { decrement: amount } : { increment: amount } } });
+          await tx.investmentPosition.update({ where: { id: position.id }, data: contribution ? { currentValue: { increment: amount }, acquisitionValue: { increment: amount } } : { currentValue: { decrement: amount }, acquisitionValue: { decrement: amount } } });
+          await tx.investmentEvent.create({ data: { userId, investmentPositionId: position.id, accountId: account.id, transactionId: transaction.id, type: contribution ? "CONTRIBUTION" : "WITHDRAWAL", date, amount, source: "IMPORT", externalId, notes: `OFX: ${entry.description.trim()}` } });
+          return;
+        }
         if (isTransfer) {
           const source = await tx.account.findFirst({
             where: { id: entry.sourceAccountId!, userId, active: true, type: { not: "CREDIT_CARD" } },
