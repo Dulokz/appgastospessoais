@@ -4,12 +4,11 @@ import { ChangeEvent, useEffect, useMemo, useState } from "react";
 import { Check, ChevronRight, FileSpreadsheet, FileText, Loader2, Search, ShieldCheck, Upload, X } from "lucide-react";
 import { commitStatementImport } from "@/lib/actions/statement-import-actions";
 import { TransactionCategoryPicker } from "@/components/categories/TransactionCategoryPicker";
-import { AccountPicker } from "@/components/accounts/AccountPicker";
 
 type Account = { id: string; name: string; type: string; institutionName?: string | null };
 type Category = { id: string; name: string; parentName?: string | null };
 type Entry = { id: string; date: string; description: string; detail?: string; signedAmount: number; externalId?: string; categoryId: string; ignored: boolean; importKind?: "TRANSFER_IN" | "TRANSFER_OUT" | "INVESTMENT_CONTRIBUTION" | "INVESTMENT_WITHDRAWAL"; sourceAccountId?: string; investmentPositionId?: string };
-type ImportRule = { matchText: string; action: Entry["importKind"]; counterpartAccountId: string | null; investmentPositionId: string | null };
+type ImportRule = { matchText: string; action: Entry["importKind"]; counterpartAccountId: string | null; investmentPositionId: string | null; targetName?: string };
 
 const currency = (value: number) => new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(Math.abs(value));
 
@@ -131,13 +130,14 @@ export function StatementImportClient({ accounts, categories, rules }: { account
   const isAutomaticTransfer = (entry: Entry) => isBancoDoBrasil && !!entry.importKind && (!!entry.sourceAccountId || !!entry.investmentPositionId);
   const selectedEntries = entries.filter((entry) => selected.includes(entry.id) && !isAutomaticTransfer(entry));
   const bulkDirection = selectedEntries.length && selectedEntries.every((entry) => entry.signedAmount > 0) ? "INCOME" : "EXPENSE";
-  const transferEntries = entries.filter((entry) => !entry.ignored && isAutomaticTransfer(entry));
-  const ruleFor = (entry: Entry) => /ourocap/i.test(entry.description) ? "OUROCAP" : "POUPANCA";
-  const transferRules = [
-    { key: "POUPANCA", title: "Poupança automática BB", help: "Resgate: Poupança → Conta Corrente BB" },
-    { key: "OUROCAP", title: "Ourocap BB", help: "Aplicação: Conta Corrente BB → Ourocap · Resgate: Ourocap → Conta Corrente BB" },
-  ].filter((rule) => transferEntries.some((entry) => ruleFor(entry) === rule.key));
-  const transferSources = accounts.filter((item) => item.id !== accountId && item.type !== "CREDIT_CARD");
+  const matchedRule = (entry: Entry) => rules.find((rule) => rule.action === entry.importKind && (rule.counterpartAccountId === entry.sourceAccountId || rule.investmentPositionId === entry.investmentPositionId));
+  const automaticLabel = (entry: Entry) => {
+    const target = matchedRule(entry)?.targetName || "investimento configurado";
+    if (entry.importKind === "INVESTMENT_CONTRIBUTION") return `Aplicação: conta do extrato → ${target}`;
+    if (entry.importKind === "INVESTMENT_WITHDRAWAL") return `Resgate: ${target} → conta do extrato`;
+    if (entry.importKind === "TRANSFER_OUT") return `Transferência: conta do extrato → ${target}`;
+    return `Transferência: ${target} → conta do extrato`;
+  };
 
   const applySavedRules = (items: Entry[]) => {
     const bankIsBB = (accounts.find((item) => item.id === accountId)?.institutionName || "").toLocaleLowerCase("pt-BR").includes("banco do brasil");
@@ -210,7 +210,6 @@ export function StatementImportClient({ accounts, categories, rules }: { account
     </section>
 
     {entries.length > 0 && <section className="space-y-4">
-      {transferEntries.length > 0 && <div className="grid gap-3 md:grid-cols-2">{transferRules.map((rule) => { const ruleEntries = transferEntries.filter((entry) => ruleFor(entry) === rule.key); const selectedSource = ruleEntries.find((entry) => entry.sourceAccountId)?.sourceAccountId || ""; return <div key={rule.key} className="rounded-2xl border border-violet-400/25 bg-violet-500/10 p-4 text-sm text-violet-100"><strong>{rule.title}</strong><p className="mt-1 text-xs text-violet-200">{rule.help}</p><div className="mt-3"><AccountPicker accounts={transferSources} value={selectedSource} onChange={(sourceAccountId) => setEntries((current) => current.map((entry) => isAutomaticTransfer(entry) && ruleFor(entry) === rule.key ? { ...entry, sourceAccountId } : entry))} placeholder={`Vincular ${rule.title}`} disabled={!accountId} /></div></div>})}</div>}
       <div className="glass-card rounded-2xl p-4 flex flex-col gap-3 lg:flex-row lg:items-center">
         <div className="flex-1"><strong className="text-white">{pending.length} itens prontos para revisar</strong><p className="text-xs text-muted-foreground">Selecione vários e aplique uma categoria de uma vez.</p></div>
         <div className="w-full max-w-xs"><TransactionCategoryPicker categories={categories} value={bulkCategory} direction={bulkDirection} onChange={setBulkCategory} compact /></div>
@@ -224,7 +223,7 @@ export function StatementImportClient({ accounts, categories, rules }: { account
             <input type="checkbox" checked={selected.includes(entry.id)} disabled={entry.ignored} onChange={() => toggle(entry.id)} />
             <span className="text-xs text-slate-400">{new Date(entry.date + "T12:00:00").toLocaleDateString("pt-BR")}</span>
             <div><p className="text-sm font-semibold text-white">{entry.description}</p><p className="text-[11px] text-muted-foreground">{entry.detail ? entry.detail + " · " : ""}{entry.externalId ? "ID do banco: " + entry.externalId : "Sem identificador do banco"}</p></div>
-            {isAutomaticTransfer(entry) ? <div><p className="mb-1 text-[11px] font-semibold text-violet-200">{entry.importKind === "TRANSFER_OUT" ? "Aplicação: escolher destino" : "Resgate: escolher origem"}</p><AccountPicker accounts={transferSources} value={entry.sourceAccountId || ""} onChange={(sourceAccountId) => updateEntry(entry.id, { sourceAccountId })} placeholder={entry.importKind === "TRANSFER_OUT" ? "Escolher destino" : "Escolher origem"} disabled={entry.ignored || !accountId} /></div> : <TransactionCategoryPicker categories={categories} value={entry.categoryId} direction={entry.signedAmount > 0 ? "INCOME" : "EXPENSE"} disabled={entry.ignored || account?.type === "CREDIT_CARD" && entry.signedAmount > 0} onChange={(categoryId) => updateEntry(entry.id, { categoryId })} compact />}
+            {isAutomaticTransfer(entry) ? <div className="rounded-lg border border-cyan-400/25 bg-cyan-500/10 px-2 py-2 text-[11px] font-bold text-cyan-100">{automaticLabel(entry)}</div> : <TransactionCategoryPicker categories={categories} value={entry.categoryId} direction={entry.signedAmount > 0 ? "INCOME" : "EXPENSE"} disabled={entry.ignored || account?.type === "CREDIT_CARD" && entry.signedAmount > 0} onChange={(categoryId) => updateEntry(entry.id, { categoryId })} compact />}
             <strong className={entry.signedAmount > 0 ? "text-emerald-300 text-sm text-right" : "text-rose-300 text-sm text-right"}>{entry.signedAmount > 0 ? "+" : "-"}{currency(entry.signedAmount)}</strong>
             <button type="button" onClick={() => updateEntry(entry.id, { ignored: !entry.ignored })} title={entry.ignored ? "Importar item" : "Ignorar item"} className={"rounded-lg p-2 " + (entry.ignored ? "bg-white/5 text-slate-400" : "bg-rose-500/10 text-rose-300")}>{entry.ignored ? <Check className="w-4 h-4"/> : <X className="w-4 h-4"/>}</button>
           </div>)}
